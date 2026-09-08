@@ -194,14 +194,17 @@ void print_token(Token token) {
 
 int main() {
 
-    // C code with keywords and identifiers
-    const char *source_code = "int x = 10; if return x";
+    // Get C code from user
+    char source_code[1000];
+
+    printf("Enter C code: ");
+    fgets(source_code, sizeof(source_code), stdin);
 
     const char *ptr = source_code;
 
-    printf("Input Code: %s\n\n", source_code);
+    printf("\nInput Code: %s", source_code);
 
-    printf("--- Lexer Output (Tokens) ---\n");
+    printf("\n--- Lexer Output (Tokens) ---\n");
 
     Token token;
 
