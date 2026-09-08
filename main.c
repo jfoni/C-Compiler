@@ -268,6 +268,160 @@ char* read_file(const char *file_path) {
     return buffer;
 }
 
+// AST node types
+typedef enum {
+    AST_INT,
+    AST_BINARY_EXPR,
+    AST_RETURN_STMT
+} ASTNodeType;
+
+// AST node structure
+typedef struct ASTNode {
+    ASTNodeType type;
+    int int_val;
+    char op;
+    struct ASTNode *left;
+    struct ASTNode *right;
+    struct ASTNode *return_value;
+} ASTNode;
+
+// Create a new AST node
+ASTNode* create_node(ASTNodeType type) {
+
+    ASTNode *node = (ASTNode*)malloc(sizeof(ASTNode));
+
+    node->type = type;
+    node->int_val = 0;
+    node->op = '\0';
+    node->left = NULL;
+    node->right = NULL;
+    node->return_value = NULL;
+
+    return node;
+}
+
+// Parser current token
+Token current_token;
+
+// Get next token from lexer
+void advance_token(const char **src) {
+    current_token = get_next_token(src);
+}
+
+// Parse primary expression
+ASTNode* parse_primary(const char **src) {
+
+    if (current_token.type == TOKEN_INT) {
+
+        ASTNode *node = create_node(AST_INT);
+
+        node->int_val = current_token.value;
+
+        advance_token(src);
+
+        return node;
+    }
+
+    return NULL;
+}
+
+// Parse binary expression
+ASTNode* parse_expression(const char **src) {
+
+    ASTNode *left = parse_primary(src);
+
+    while (current_token.type == TOKEN_PLUS ||
+           current_token.type == TOKEN_MINUS) {
+
+        char op;
+
+        if (current_token.type == TOKEN_PLUS) {
+            op = '+';
+        } else {
+            op = '-';
+        }
+
+        advance_token(src);
+
+        ASTNode *right = parse_primary(src);
+
+        ASTNode *binary_node = create_node(AST_BINARY_EXPR);
+
+        binary_node->op = op;
+        binary_node->left = left;
+        binary_node->right = right;
+
+        left = binary_node;
+    }
+
+    return left;
+}
+
+// Parse return statement
+ASTNode* parse_statement(const char **src) {
+
+    if (current_token.type == TOKEN_KW_RETURN) {
+
+        advance_token(src);
+
+        ASTNode *stmt = create_node(AST_RETURN_STMT);
+
+        stmt->return_value = parse_expression(src);
+
+        if (current_token.type == TOKEN_SEMICOLON) {
+            advance_token(src);
+        }
+
+        return stmt;
+    }
+
+    return NULL;
+}
+
+// Print AST
+void print_ast(ASTNode *node, int indent) {
+
+    if (!node) {
+        return;
+    }
+
+    for (int i = 0; i < indent; i++) {
+        printf("  ");
+    }
+
+    switch (node->type) {
+
+        case AST_RETURN_STMT:
+            printf("ReturnStatement\n");
+            print_ast(node->return_value, indent + 1);
+            break;
+
+        case AST_BINARY_EXPR:
+            printf("BinaryExpr (%c)\n", node->op);
+            print_ast(node->left, indent + 1);
+            print_ast(node->right, indent + 1);
+            break;
+
+        case AST_INT:
+            printf("IntegerLiteral(%d)\n", node->int_val);
+            break;
+    }
+}
+
+// Free AST memory
+void free_ast(ASTNode *node) {
+
+    if (!node) {
+        return;
+    }
+
+    free_ast(node->left);
+    free_ast(node->right);
+    free_ast(node->return_value);
+
+    free(node);
+}
+
 int main() {
 
     // Read C code from test.c
@@ -279,23 +433,23 @@ int main() {
 
     const char *ptr = source_code;
 
-    printf("--- Reading from test.c ---\n");
+    printf("Reading from test.c\n");
 
     printf("%s\n", source_code);
 
-    printf("--- Lexer Output (Tokens) ---\n");
+    printf("Generating AST\n");
 
-    Token token;
+    // Load first token
+    advance_token(&ptr);
 
-    do {
+    ASTNode *ast_root = parse_statement(&ptr);
 
-        token = get_next_token(&ptr);
+    print_ast(ast_root, 0);
 
-        print_token(token);
+    // Free AST memory
+    free_ast(ast_root);
 
-    } while (token.type != TOKEN_EOF);
-
-    // Free allocated memory
+    // Free source code memory
     free(source_code);
 
     return 0;
