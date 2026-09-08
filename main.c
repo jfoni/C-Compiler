@@ -19,6 +19,11 @@ typedef enum {
     TOKEN_MINUS,
     TOKEN_STAR,
     TOKEN_SLASH,
+    TOKEN_LPAREN,
+    TOKEN_RPAREN,
+    TOKEN_LBRACE,
+    TOKEN_RBRACE,
+    TOKEN_SEMICOLON,
     TOKEN_EOF,
     TOKEN_UNKNOWN
 } TokenType;
@@ -128,6 +133,21 @@ Token get_next_token(const char **src) {
         case '/':
             return (Token){TOKEN_SLASH, 0, "/"};
 
+        case '(':
+            return (Token){TOKEN_LPAREN, 0, "("};
+
+        case ')':
+            return (Token){TOKEN_RPAREN, 0, ")"};
+
+        case '{':
+            return (Token){TOKEN_LBRACE, 0, "{"};
+
+        case '}':
+            return (Token){TOKEN_RBRACE, 0, "}"};
+
+        case ';':
+            return (Token){TOKEN_SEMICOLON, 0, ";"};
+
         default:
             return (Token){TOKEN_UNKNOWN, 0, ""};
     }
@@ -182,6 +202,26 @@ void print_token(Token token) {
             printf("TOKEN_SLASH (/)\n");
             break;
 
+        case TOKEN_LPAREN:
+            printf("TOKEN_LPAREN (()\n");
+            break;
+
+        case TOKEN_RPAREN:
+            printf("TOKEN_RPAREN ())\n");
+            break;
+
+        case TOKEN_LBRACE:
+            printf("TOKEN_LBRACE ({)\n");
+            break;
+
+        case TOKEN_RBRACE:
+            printf("TOKEN_RBRACE (})\n");
+            break;
+
+        case TOKEN_SEMICOLON:
+            printf("TOKEN_SEMICOLON (;)\n");
+            break;
+
         case TOKEN_EOF:
             printf("TOKEN_EOF\n");
             break;
@@ -192,19 +232,58 @@ void print_token(Token token) {
     }
 }
 
+// Read entire file
+char* read_file(const char *file_path) {
+
+    FILE *file = fopen(file_path, "rb");
+
+    if (!file) {
+        printf("Error: Could not open file %s\n", file_path);
+        return NULL;
+    }
+
+    // Get file size
+    fseek(file, 0, SEEK_END);
+
+    long size = ftell(file);
+
+    fseek(file, 0, SEEK_SET);
+
+    // Allocate memory
+    char *buffer = (char*)malloc(size + 1);
+
+    if (!buffer) {
+        fclose(file);
+        printf("Error: Memory allocation failed!\n");
+        return NULL;
+    }
+
+    // Read file
+    fread(buffer, 1, size, file);
+
+    buffer[size] = '\0';
+
+    fclose(file);
+
+    return buffer;
+}
+
 int main() {
 
-    // Get C code from user
-    char source_code[1000];
+    // Read C code from test.c
+    char *source_code = read_file("test.c");
 
-    printf("Enter C code: ");
-    fgets(source_code, sizeof(source_code), stdin);
+    if (!source_code) {
+        return 1;
+    }
 
     const char *ptr = source_code;
 
-    printf("\nInput Code: %s", source_code);
+    printf("--- Reading from test.c ---\n");
 
-    printf("\n--- Lexer Output (Tokens) ---\n");
+    printf("%s\n", source_code);
+
+    printf("--- Lexer Output (Tokens) ---\n");
 
     Token token;
 
@@ -215,6 +294,9 @@ int main() {
         print_token(token);
 
     } while (token.type != TOKEN_EOF);
+
+    // Free allocated memory
+    free(source_code);
 
     return 0;
 }
