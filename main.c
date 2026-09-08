@@ -7,6 +7,14 @@
 typedef enum {
     TOKEN_INT,
     TOKEN_IDENTIFIER,
+
+    // Keywords
+    TOKEN_KW_INT,
+    TOKEN_KW_RETURN,
+    TOKEN_KW_IF,
+    TOKEN_KW_ELSE,
+
+    TOKEN_ASSIGN,
     TOKEN_PLUS,
     TOKEN_MINUS,
     TOKEN_STAR,
@@ -21,6 +29,28 @@ typedef struct {
     int value;
     char text[32];
 } Token;
+
+// Check if a word is a keyword or identifier
+TokenType check_keyword(const char *text) {
+
+    if (strcmp(text, "int") == 0) {
+        return TOKEN_KW_INT;
+    }
+
+    if (strcmp(text, "return") == 0) {
+        return TOKEN_KW_RETURN;
+    }
+
+    if (strcmp(text, "if") == 0) {
+        return TOKEN_KW_IF;
+    }
+
+    if (strcmp(text, "else") == 0) {
+        return TOKEN_KW_ELSE;
+    }
+
+    return TOKEN_IDENTIFIER;
+}
 
 // Lexer function
 Token get_next_token(const char **src) {
@@ -37,6 +67,7 @@ Token get_next_token(const char **src) {
 
     // Read number
     if (isdigit(**src)) {
+
         int val = 0;
 
         while (isdigit(**src)) {
@@ -47,7 +78,7 @@ Token get_next_token(const char **src) {
         return (Token){TOKEN_INT, val, ""};
     }
 
-    // Read identifier
+    // Read identifier or keyword
     if (isalpha(**src) || **src == '_') {
 
         char buf[32];
@@ -66,7 +97,9 @@ Token get_next_token(const char **src) {
 
         Token t;
 
-        t.type = TOKEN_IDENTIFIER;
+        // Check if the word is a keyword
+        t.type = check_keyword(buf);
+
         t.value = 0;
 
         strcpy(t.text, buf);
@@ -74,11 +107,14 @@ Token get_next_token(const char **src) {
         return t;
     }
 
-    // Read operators
+    // Read operators and symbols
     char current = **src;
     (*src)++;
 
     switch (current) {
+
+        case '=':
+            return (Token){TOKEN_ASSIGN, 0, "="};
 
         case '+':
             return (Token){TOKEN_PLUS, 0, "+"};
@@ -110,6 +146,26 @@ void print_token(Token token) {
             printf("TOKEN_IDENTIFIER(\"%s\")\n", token.text);
             break;
 
+        case TOKEN_KW_INT:
+            printf("TOKEN_KEYWORD(int)\n");
+            break;
+
+        case TOKEN_KW_RETURN:
+            printf("TOKEN_KEYWORD(return)\n");
+            break;
+
+        case TOKEN_KW_IF:
+            printf("TOKEN_KEYWORD(if)\n");
+            break;
+
+        case TOKEN_KW_ELSE:
+            printf("TOKEN_KEYWORD(else)\n");
+            break;
+
+        case TOKEN_ASSIGN:
+            printf("TOKEN_ASSIGN (=)\n");
+            break;
+
         case TOKEN_PLUS:
             printf("TOKEN_PLUS (+)\n");
             break;
@@ -138,7 +194,8 @@ void print_token(Token token) {
 
 int main() {
 
-    const char *source_code = "total = x + 50";
+    // C code with keywords and identifiers
+    const char *source_code = "int x = 10; if return x";
 
     const char *ptr = source_code;
 
