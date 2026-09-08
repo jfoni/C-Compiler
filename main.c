@@ -408,6 +408,53 @@ void print_ast(ASTNode *node, int indent) {
     }
 }
 
+// Generate x86_64 assembly code
+void generate_code(ASTNode *node) {
+
+    if (!node) {
+        return;
+    }
+
+    switch (node->type) {
+
+        case AST_INT:
+            printf("    mov rax, %d\n", node->int_val);
+            break;
+
+        case AST_BINARY_EXPR:
+
+            // Evaluate right side and save it on the stack
+            generate_code(node->right);
+
+            printf("    push rax\n");
+
+            // Evaluate left side
+            generate_code(node->left);
+
+            // Get right side value back
+            printf("    pop rbx\n");
+
+            // Perform the operation
+            if (node->op == '+') {
+                printf("    add rax, rbx\n");
+            } else if (node->op == '-') {
+                printf("    sub rax, rbx\n");
+            }
+
+            break;
+
+        case AST_RETURN_STMT:
+
+            // Generate code for return value
+            generate_code(node->return_value);
+
+            // Return from function
+            printf("    ret\n");
+
+            break;
+    }
+}
+
 // Free AST memory
 void free_ast(ASTNode *node) {
 
@@ -434,17 +481,26 @@ int main() {
     const char *ptr = source_code;
 
     printf("Reading from test.c\n");
-
     printf("%s\n", source_code);
-
-    printf("Generating AST\n");
 
     // Load first token
     advance_token(&ptr);
 
+    // Generate AST
     ASTNode *ast_root = parse_statement(&ptr);
 
+    printf("Generating AST\n");
     print_ast(ast_root, 0);
+
+    printf("\n");
+
+    // Generate x86_64 assembly
+    printf("Generated x86_64 Assembly Code\n");
+    printf(".intel_syntax noprefix\n");
+    printf(".globl main\n");
+    printf("main:\n");
+
+    generate_code(ast_root);
 
     // Free AST memory
     free_ast(ast_root);
