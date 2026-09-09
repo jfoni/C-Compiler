@@ -469,10 +469,25 @@ void free_ast(ASTNode *node) {
     free(node);
 }
 
-int main() {
+int main(int argc, char *argv[]) {
 
-    // Read C code from test.c
-    char *source_code = read_file("test.c");
+    // Check command-line arguments
+    if (argc < 2) {
+        printf("Usage: %s <source_file.c> [-o output_file.s]\n", argv[0]);
+        return 1;
+    }
+
+    // Set input and output file names
+    const char *input_file_path = argv[1];
+    const char *output_file_path = "out.s";
+
+    // Check for custom output file
+    if (argc >= 4 && strcmp(argv[2], "-o") == 0) {
+        output_file_path = argv[3];
+    }
+
+    // Read C source file
+    char *source_code = read_file(input_file_path);
 
     if (!source_code) {
         return 1;
@@ -480,8 +495,16 @@ int main() {
 
     const char *ptr = source_code;
 
-    printf("Reading from test.c\n");
-    printf("%s\n", source_code);
+    // Open output assembly file
+    FILE *output_file = fopen(output_file_path, "w");
+
+    if (!output_file) {
+        printf("Error: Could not open output file %s\n", output_file_path);
+        free(source_code);
+        return 1;
+    }
+
+    printf("Compiling %s -> %s...\n", input_file_path, output_file_path);
 
     // Load first token
     advance_token(&ptr);
@@ -489,18 +512,15 @@ int main() {
     // Generate AST
     ASTNode *ast_root = parse_statement(&ptr);
 
-    printf("Generating AST\n");
-    print_ast(ast_root, 0);
-
-    // Open output assembly file
-    FILE *output_file = fopen("out.s", "w");
-
-    if (!output_file) {
-        printf("Error: Could not create output file!\n");
-        free_ast(ast_root);
+    if (!ast_root) {
+        printf("Error: Could not parse source file!\n");
+        fclose(output_file);
         free(source_code);
         return 1;
     }
+
+    printf("Generating AST\n");
+    print_ast(ast_root, 0);
 
     // Write assembly header
     fprintf(output_file, ".intel_syntax noprefix\n");
@@ -513,7 +533,8 @@ int main() {
     // Close output file
     fclose(output_file);
 
-    printf("Assembly code successfully written to out.s\n");
+    printf("Assembly code successfully written to %s\n", output_file_path);
+    printf("Compilation finished successfully!\n");
 
     // Free AST memory
     free_ast(ast_root);
