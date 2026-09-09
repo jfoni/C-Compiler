@@ -1,7 +1,7 @@
-int x = 0;
+int x = 1;
 
-if (x) {
-    return 100;
-} else {
-    return 200;
+while (x) {
+    return 77;
 }
+
+return 0;

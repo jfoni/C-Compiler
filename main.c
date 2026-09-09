@@ -13,6 +13,7 @@ typedef enum {
     TOKEN_KW_RETURN,
     TOKEN_KW_IF,
     TOKEN_KW_ELSE,
+    TOKEN_KW_WHILE,
 
     TOKEN_ASSIGN,
     TOKEN_PLUS,
@@ -98,6 +99,10 @@ TokenType check_keyword(const char *text) {
 
     if (strcmp(text, "else") == 0) {
         return TOKEN_KW_ELSE;
+    }
+
+    if (strcmp(text, "while") == 0) {
+        return TOKEN_KW_WHILE;
     }
 
     return TOKEN_IDENTIFIER;
@@ -206,7 +211,8 @@ typedef enum {
     AST_BINARY_EXPR,
     AST_VAR_DECL,
     AST_RETURN_STMT,
-    AST_IF_STMT
+    AST_IF_STMT,
+    AST_WHILE_STMT
 } ASTNodeType;
 
 // AST node structure
@@ -229,6 +235,7 @@ typedef struct ASTNode {
     struct ASTNode *cond;
     struct ASTNode *then_block;
     struct ASTNode *else_block;
+    struct ASTNode *body;
 
     struct ASTNode *next;
 } ASTNode;
@@ -249,6 +256,9 @@ ASTNode* create_node(ASTNodeType type) {
 }
 
 // Parser current token
+ASTNode* parse_if_statement(const char **src);
+ASTNode* parse_while_statement(const char **src);
+
 void free_ast(ASTNode *node);
 
 Token current_token;
@@ -423,6 +433,10 @@ ASTNode* parse_block(const char **src) {
             statement = parse_variable_declaration(src);
         } else if (current_token.type == TOKEN_KW_RETURN) {
             statement = parse_return_statement(src);
+        } else if (current_token.type == TOKEN_KW_IF) {
+            statement = parse_if_statement(src);
+        } else if (current_token.type == TOKEN_KW_WHILE) {
+            statement = parse_while_statement(src);
         } else {
             printf("Error: Unexpected token inside block!\n");
             exit(1);
@@ -493,6 +507,45 @@ ASTNode* parse_if_statement(const char **src) {
     return node;
 }
 
+// Parse while statement
+ASTNode* parse_while_statement(const char **src) {
+
+    if (current_token.type != TOKEN_KW_WHILE) {
+        return NULL;
+    }
+
+    advance_token(src);
+
+    if (current_token.type != TOKEN_LPAREN) {
+        printf("Error: Expected '(' after while!\n");
+        exit(1);
+    }
+
+    advance_token(src);
+
+    ASTNode *node = create_node(AST_WHILE_STMT);
+
+    node->cond = parse_expression(src);
+
+    if (!node->cond) {
+        printf("Error: Expected condition inside while!\n");
+        free(node);
+        exit(1);
+    }
+
+    if (current_token.type != TOKEN_RPAREN) {
+        printf("Error: Expected ')' after condition!\n");
+        free(node);
+        exit(1);
+    }
+
+    advance_token(src);
+
+    node->body = parse_block(src);
+
+    return node;
+}
+
 // Parse all statements
 ASTNode* parse_program(const char **src) {
 
@@ -509,6 +562,8 @@ ASTNode* parse_program(const char **src) {
             statement = parse_return_statement(src);
         } else if (current_token.type == TOKEN_KW_IF) {
             statement = parse_if_statement(src);
+        } else if (current_token.type == TOKEN_KW_WHILE) {
+            statement = parse_while_statement(src);
         } else {
             printf("Error: Unexpected token!\n");
             exit(1);
@@ -538,30 +593,38 @@ void print_ast(ASTNode *node, int indent) {
         switch (node->type) {
 
             case AST_VAR_DECL:
-                printf("VariableDeclaration(%s)\n", node->var_name);
+                printf("VariableDeclaration(%s)\n",
+                       node->var_name);
                 print_ast(node->expr, indent + 1);
                 break;
 
             case AST_VAR:
-                printf("Variable(%s)\n", node->var_name);
+                printf("Variable(%s)\n",
+                       node->var_name);
                 break;
 
             case AST_RETURN_STMT:
                 printf("ReturnStatement\n");
-                print_ast(node->return_value, indent + 1);
+                print_ast(node->return_value,
+                          indent + 1);
                 break;
 
             case AST_BINARY_EXPR:
-                printf("BinaryExpr (%c)\n", node->op);
-                print_ast(node->left, indent + 1);
-                print_ast(node->right, indent + 1);
+                printf("BinaryExpr (%c)\n",
+                       node->op);
+                print_ast(node->left,
+                          indent + 1);
+                print_ast(node->right,
+                          indent + 1);
                 break;
 
             case AST_INT:
-                printf("IntegerLiteral(%d)\n", node->int_val);
+                printf("IntegerLiteral(%d)\n",
+                       node->int_val);
                 break;
 
             case AST_IF_STMT:
+
                 printf("IfStatement\n");
 
                 for (int i = 0; i < indent + 1; i++) {
@@ -569,14 +632,16 @@ void print_ast(ASTNode *node, int indent) {
                 }
 
                 printf("Condition\n");
-                print_ast(node->cond, indent + 2);
+                print_ast(node->cond,
+                          indent + 2);
 
                 for (int i = 0; i < indent + 1; i++) {
                     printf("  ");
                 }
 
                 printf("ThenBlock\n");
-                print_ast(node->then_block, indent + 2);
+                print_ast(node->then_block,
+                          indent + 2);
 
                 if (node->else_block) {
 
@@ -585,8 +650,31 @@ void print_ast(ASTNode *node, int indent) {
                     }
 
                     printf("ElseBlock\n");
-                    print_ast(node->else_block, indent + 2);
+                    print_ast(node->else_block,
+                              indent + 2);
                 }
+
+                break;
+
+            case AST_WHILE_STMT:
+
+                printf("WhileStatement\n");
+
+                for (int i = 0; i < indent + 1; i++) {
+                    printf("  ");
+                }
+
+                printf("Condition\n");
+                print_ast(node->cond,
+                          indent + 2);
+
+                for (int i = 0; i < indent + 1; i++) {
+                    printf("  ");
+                }
+
+                printf("Body\n");
+                print_ast(node->body,
+                          indent + 2);
 
                 break;
         }
@@ -606,13 +694,17 @@ void generate_code(ASTNode *node, FILE *output_file) {
         switch (node->type) {
 
             case AST_INT:
+
                 fprintf(output_file,
                         "    mov rax, %d\n",
                         node->int_val);
+
                 break;
 
             case AST_VAR: {
-                int offset = get_symbol_offset(node->var_name);
+
+                int offset =
+                    get_symbol_offset(node->var_name);
 
                 fprintf(output_file,
                         "    mov rax, [rbp - %d]\n",
@@ -624,31 +716,43 @@ void generate_code(ASTNode *node, FILE *output_file) {
             case AST_BINARY_EXPR:
 
                 // Evaluate right side and save it on the stack
-                generate_code(node->right, output_file);
+                generate_code(node->right,
+                              output_file);
 
-                fprintf(output_file, "    push rax\n");
+                fprintf(output_file,
+                        "    push rax\n");
 
                 // Evaluate left side
-                generate_code(node->left, output_file);
+                generate_code(node->left,
+                              output_file);
 
                 // Get right side value back
-                fprintf(output_file, "    pop rbx\n");
+                fprintf(output_file,
+                        "    pop rbx\n");
 
                 // Perform the operation
                 if (node->op == '+') {
-                    fprintf(output_file, "    add rax, rbx\n");
+
+                    fprintf(output_file,
+                            "    add rax, rbx\n");
+
                 } else if (node->op == '-') {
-                    fprintf(output_file, "    sub rax, rbx\n");
+
+                    fprintf(output_file,
+                            "    sub rax, rbx\n");
                 }
 
                 break;
 
             case AST_VAR_DECL: {
+
                 // Generate value of variable
-                generate_code(node->expr, output_file);
+                generate_code(node->expr,
+                              output_file);
 
                 // Add variable to symbol table
-                int offset = add_symbol(node->var_name);
+                int offset =
+                    add_symbol(node->var_name);
 
                 // Store value in stack
                 fprintf(output_file,
@@ -659,26 +763,33 @@ void generate_code(ASTNode *node, FILE *output_file) {
             }
 
             case AST_IF_STMT: {
-                int label_id = label_sequence++;
+
+                int label_id =
+                    label_sequence++;
 
                 // Generate condition
-                generate_code(node->cond, output_file);
+                generate_code(node->cond,
+                              output_file);
 
                 fprintf(output_file,
                         "    cmp rax, 0\n");
 
                 if (node->else_block) {
+
                     fprintf(output_file,
                             "    je .Lelse_%d\n",
                             label_id);
+
                 } else {
+
                     fprintf(output_file,
                             "    je .Lend_%d\n",
                             label_id);
                 }
 
                 // Generate if block
-                generate_code(node->then_block, output_file);
+                generate_code(node->then_block,
+                              output_file);
 
                 if (node->else_block) {
 
@@ -691,7 +802,8 @@ void generate_code(ASTNode *node, FILE *output_file) {
                             label_id);
 
                     // Generate else block
-                    generate_code(node->else_block, output_file);
+                    generate_code(node->else_block,
+                                  output_file);
                 }
 
                 fprintf(output_file,
@@ -701,10 +813,50 @@ void generate_code(ASTNode *node, FILE *output_file) {
                 break;
             }
 
+            case AST_WHILE_STMT: {
+
+                int label_id =
+                    label_sequence++;
+
+                // Loop start label
+                fprintf(output_file,
+                        ".Lloop_start_%d:\n",
+                        label_id);
+
+                // Generate condition
+                generate_code(node->cond,
+                              output_file);
+
+                fprintf(output_file,
+                        "    cmp rax, 0\n");
+
+                // Exit loop if condition is false
+                fprintf(output_file,
+                        "    je .Lloop_end_%d\n",
+                        label_id);
+
+                // Generate loop body
+                generate_code(node->body,
+                              output_file);
+
+                // Jump back to loop start
+                fprintf(output_file,
+                        "    jmp .Lloop_start_%d\n",
+                        label_id);
+
+                // Loop end label
+                fprintf(output_file,
+                        ".Lloop_end_%d:\n",
+                        label_id);
+
+                break;
+            }
+
             case AST_RETURN_STMT:
 
                 // Generate return value
-                generate_code(node->return_value, output_file);
+                generate_code(node->return_value,
+                              output_file);
 
                 // Function epilogue
                 fprintf(output_file,
@@ -737,6 +889,7 @@ void free_ast(ASTNode *node) {
     free_ast(node->cond);
     free_ast(node->then_block);
     free_ast(node->else_block);
+    free_ast(node->body);
     free_ast(node->next);
 
     free(node);
@@ -745,11 +898,14 @@ void free_ast(ASTNode *node) {
 // Read entire file
 char* read_file(const char *file_path) {
 
-    FILE *file = fopen(file_path, "rb");
+    FILE *file =
+        fopen(file_path, "rb");
 
     if (!file) {
+
         printf("Error: Could not open file %s\n",
                file_path);
+
         return NULL;
     }
 
@@ -761,11 +917,15 @@ char* read_file(const char *file_path) {
     fseek(file, 0, SEEK_SET);
 
     // Allocate memory
-    char *buffer = (char*)malloc(size + 1);
+    char *buffer =
+        (char*)malloc(size + 1);
 
     if (!buffer) {
+
         fclose(file);
+
         printf("Error: Memory allocation failed!\n");
+
         return NULL;
     }
 
@@ -783,22 +943,31 @@ int main(int argc, char *argv[]) {
 
     // Check command-line arguments
     if (argc < 2) {
+
         printf("Usage: %s <source_file.c> [-o output_file.s]\n",
                argv[0]);
+
         return 1;
     }
 
     // Set input and output file names
-    const char *input_file_path = argv[1];
-    const char *output_file_path = "out.s";
+    const char *input_file_path =
+        argv[1];
+
+    const char *output_file_path =
+        "out.s";
 
     // Check for custom output file
-    if (argc >= 4 && strcmp(argv[2], "-o") == 0) {
-        output_file_path = argv[3];
+    if (argc >= 4 &&
+        strcmp(argv[2], "-o") == 0) {
+
+        output_file_path =
+            argv[3];
     }
 
     // Read source file
-    char *source_code = read_file(input_file_path);
+    char *source_code =
+        read_file(input_file_path);
 
     if (!source_code) {
         return 1;
@@ -809,26 +978,34 @@ int main(int argc, char *argv[]) {
            output_file_path);
 
     // Start lexer
-    const char *ptr = source_code;
+    const char *ptr =
+        source_code;
 
     advance_token(&ptr);
 
     // Parse source code
-    ASTNode *ast_root = parse_program(&ptr);
+    ASTNode *ast_root =
+        parse_program(&ptr);
 
     if (!ast_root) {
+
         printf("Error: Could not parse source file!\n");
+
         free(source_code);
+
         return 1;
     }
 
     printf("Generating AST\n");
+
     print_ast(ast_root, 0);
 
     // Open output assembly file
-    FILE *output_file = fopen(output_file_path, "w");
+    FILE *output_file =
+        fopen(output_file_path, "w");
 
     if (!output_file) {
+
         printf("Error: Could not open output file %s\n",
                output_file_path);
 
@@ -859,7 +1036,8 @@ int main(int argc, char *argv[]) {
             "    sub rsp, 800\n");
 
     // Generate assembly code
-    generate_code(ast_root, output_file);
+    generate_code(ast_root,
+                  output_file);
 
     fclose(output_file);
 

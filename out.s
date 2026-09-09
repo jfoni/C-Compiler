@@ -4,19 +4,19 @@ main:
     push rbp
     mov rbp, rsp
     sub rsp, 800
-    mov rax, 0
+    mov rax, 1
     mov [rbp - 8], rax
+.Lloop_start_0:
     mov rax, [rbp - 8]
     cmp rax, 0
-    je .Lelse_0
-    mov rax, 100
+    je .Lloop_end_0
+    mov rax, 77
     mov rsp, rbp
     pop rbp
     ret
-    jmp .Lend_0
-.Lelse_0:
-    mov rax, 200
+    jmp .Lloop_start_0
+.Lloop_end_0:
+    mov rax, 0
     mov rsp, rbp
     pop rbp
     ret
-.Lend_0:
