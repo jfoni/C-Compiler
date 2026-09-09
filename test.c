@@ -1,1 +1,12 @@
-return 10 + 5 * 2;
+int x = 10;
+
+while (x > 0) {
+
+    if (x % 2 == 0) {
+        x = x - 2;
+    } else {
+        x = x - 1;
+    }
+}
+
+return x;

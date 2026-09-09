@@ -45,6 +45,7 @@ typedef struct {
     TokenType type;
     int value;
     char text[32];
+    int line;
 } Token;
 
 // Symbol table entry
@@ -101,6 +102,9 @@ void free_ast(ASTNode *node);
 // Current token
 Token current_token;
 
+// Current line
+int current_line = 1;
+
 // Label counter
 int label_sequence = 0;
 
@@ -133,6 +137,7 @@ Token get_next_token(const char **src) {
     t.type = TOKEN_UNKNOWN;
     t.value = 0;
     t.text[0] = '\0';
+    t.line = current_line;
 
     // Skip spaces
     while (**src == ' ' ||
@@ -140,8 +145,14 @@ Token get_next_token(const char **src) {
            **src == '\t' ||
            **src == '\r') {
 
+        if (**src == '\n') {
+            current_line++;
+        }
+
         (*src)++;
     }
+
+    t.line = current_line;
 
     // End of input
     if (**src == '\0') {
@@ -221,6 +232,7 @@ Token get_next_token(const char **src) {
             } else {
 
                 t.type = TOKEN_UNKNOWN;
+                strcpy(t.text, "!");
             }
 
             break;
@@ -330,6 +342,9 @@ Token get_next_token(const char **src) {
         default:
 
             t.type = TOKEN_UNKNOWN;
+            t.text[0] = **src;
+            t.text[1] = '\0';
+
             (*src)++;
 
             break;
@@ -355,6 +370,15 @@ char* read_file(const char *filename) {
 
     long size = ftell(file);
 
+    if (size < 0) {
+
+        printf("Error: Could not read file size!\n");
+
+        fclose(file);
+
+        return NULL;
+    }
+
     fseek(file, 0, SEEK_SET);
 
     char *buffer =
@@ -369,7 +393,18 @@ char* read_file(const char *filename) {
         return NULL;
     }
 
-    fread(buffer, 1, size, file);
+    size_t bytes_read =
+        fread(buffer, 1, size, file);
+
+    if (bytes_read != (size_t)size) {
+
+        printf("Error: Could not read source file completely!\n");
+
+        free(buffer);
+        fclose(file);
+
+        return NULL;
+    }
 
     buffer[size] = '\0';
 
@@ -487,14 +522,16 @@ ASTNode* parse_primary(const char **src) {
 
         if (!node) {
 
-            printf("Error: Expected expression inside parentheses!\n");
+            printf("Error at line %d: Expected expression inside parentheses!\n",
+                   current_token.line);
 
             exit(1);
         }
 
         if (current_token.type != TOKEN_RPAREN) {
 
-            printf("Error: Expected ')'!\n");
+            printf("Error at line %d: Expected ')'!\n",
+                   current_token.line);
 
             free_ast(node);
 
@@ -504,6 +541,15 @@ ASTNode* parse_primary(const char **src) {
         advance_token(src);
 
         return node;
+    }
+
+    if (current_token.type == TOKEN_UNKNOWN) {
+
+        printf("Error at line %d: Unknown token '%s'!\n",
+               current_token.line,
+               current_token.text);
+
+        exit(1);
     }
 
     return NULL;
@@ -541,7 +587,8 @@ ASTNode* parse_multiplication(const char **src) {
 
         if (!right) {
 
-            printf("Error: Expected expression after operator!\n");
+            printf("Error at line %d: Expected expression after operator!\n",
+                   current_token.line);
 
             free_ast(left);
 
@@ -622,7 +669,8 @@ ASTNode* parse_expression(const char **src) {
 
         if (!right) {
 
-            printf("Error: Expected expression after operator!\n");
+            printf("Error at line %d: Expected expression after operator!\n",
+                   current_token.line);
 
             free_ast(left);
 
@@ -672,7 +720,8 @@ ASTNode* parse_variable_declaration(const char **src) {
 
     if (current_token.type != TOKEN_IDENTIFIER) {
 
-        printf("Error: Expected variable name!\n");
+        printf("Error at line %d: Expected variable name after 'int'!\n",
+               current_token.line);
 
         exit(1);
     }
@@ -687,7 +736,8 @@ ASTNode* parse_variable_declaration(const char **src) {
 
     if (current_token.type != TOKEN_ASSIGN) {
 
-        printf("Error: Expected '=' after variable name!\n");
+        printf("Error at line %d: Expected '=' after variable name!\n",
+               current_token.line);
 
         free_ast(node);
 
@@ -701,7 +751,8 @@ ASTNode* parse_variable_declaration(const char **src) {
 
     if (!node->expr) {
 
-        printf("Error: Expected expression after '='!\n");
+        printf("Error at line %d: Expected expression after '='!\n",
+               current_token.line);
 
         free_ast(node);
 
@@ -710,7 +761,8 @@ ASTNode* parse_variable_declaration(const char **src) {
 
     if (current_token.type != TOKEN_SEMICOLON) {
 
-        printf("Error: Expected ';' after variable declaration!\n");
+        printf("Error at line %d: Expected ';' after variable declaration!\n",
+               current_token.line);
 
         free_ast(node);
 
@@ -753,7 +805,8 @@ ASTNode* parse_assignment(const char **src) {
 
     if (!node->expr) {
 
-        printf("Error: Expected expression after '='!\n");
+        printf("Error at line %d: Expected expression after '='!\n",
+               current_token.line);
 
         free_ast(node);
 
@@ -762,7 +815,8 @@ ASTNode* parse_assignment(const char **src) {
 
     if (current_token.type != TOKEN_SEMICOLON) {
 
-        printf("Error: Expected ';' after assignment!\n");
+        printf("Error at line %d: Expected ';' after assignment!\n",
+               current_token.line);
 
         free_ast(node);
 
@@ -791,7 +845,8 @@ ASTNode* parse_return_statement(const char **src) {
 
     if (!node->return_value) {
 
-        printf("Error: Expected return expression!\n");
+        printf("Error at line %d: Expected return expression!\n",
+               current_token.line);
 
         free_ast(node);
 
@@ -800,7 +855,8 @@ ASTNode* parse_return_statement(const char **src) {
 
     if (current_token.type != TOKEN_SEMICOLON) {
 
-        printf("Error: Expected ';' after return!\n");
+        printf("Error at line %d: Expected ';' after return!\n",
+               current_token.line);
 
         free_ast(node);
 
@@ -817,7 +873,8 @@ ASTNode* parse_block(const char **src) {
 
     if (current_token.type != TOKEN_LBRACE) {
 
-        printf("Error: Expected '{'!\n");
+        printf("Error at line %d: Expected '{'!\n",
+               current_token.line);
 
         exit(1);
     }
@@ -857,9 +914,22 @@ ASTNode* parse_block(const char **src) {
             statement =
                 parse_assignment(src);
 
+        } else if (current_token.type == TOKEN_UNKNOWN) {
+
+            printf("Error at line %d: Unknown token '%s' inside block!\n",
+                   current_token.line,
+                   current_token.text);
+
+            free_ast(first);
+
+            exit(1);
+
         } else {
 
-            printf("Error: Unexpected token inside block!\n");
+            printf("Error at line %d: Unexpected token inside block!\n",
+                   current_token.line);
+
+            free_ast(first);
 
             exit(1);
         }
@@ -881,7 +951,8 @@ ASTNode* parse_block(const char **src) {
 
     if (current_token.type != TOKEN_RBRACE) {
 
-        printf("Error: Expected '}'!\n");
+        printf("Error at line %d: Expected '}'!\n",
+               current_token.line);
 
         free_ast(first);
 
@@ -904,7 +975,8 @@ ASTNode* parse_if_statement(const char **src) {
 
     if (current_token.type != TOKEN_LPAREN) {
 
-        printf("Error: Expected '(' after if!\n");
+        printf("Error at line %d: Expected '(' after if!\n",
+               current_token.line);
 
         exit(1);
     }
@@ -919,7 +991,8 @@ ASTNode* parse_if_statement(const char **src) {
 
     if (!node->cond) {
 
-        printf("Error: Expected condition inside if!\n");
+        printf("Error at line %d: Expected condition inside if!\n",
+               current_token.line);
 
         free_ast(node);
 
@@ -928,7 +1001,8 @@ ASTNode* parse_if_statement(const char **src) {
 
     if (current_token.type != TOKEN_RPAREN) {
 
-        printf("Error: Expected ')' after condition!\n");
+        printf("Error at line %d: Expected ')' after condition!\n",
+               current_token.line);
 
         free_ast(node);
 
@@ -962,7 +1036,8 @@ ASTNode* parse_while_statement(const char **src) {
 
     if (current_token.type != TOKEN_LPAREN) {
 
-        printf("Error: Expected '(' after while!\n");
+        printf("Error at line %d: Expected '(' after while!\n",
+               current_token.line);
 
         exit(1);
     }
@@ -977,7 +1052,8 @@ ASTNode* parse_while_statement(const char **src) {
 
     if (!node->cond) {
 
-        printf("Error: Expected condition inside while!\n");
+        printf("Error at line %d: Expected condition inside while!\n",
+               current_token.line);
 
         free_ast(node);
 
@@ -986,7 +1062,8 @@ ASTNode* parse_while_statement(const char **src) {
 
     if (current_token.type != TOKEN_RPAREN) {
 
-        printf("Error: Expected ')' after condition!\n");
+        printf("Error at line %d: Expected ')' after condition!\n",
+               current_token.line);
 
         free_ast(node);
 
@@ -1036,9 +1113,22 @@ ASTNode* parse_program(const char **src) {
             statement =
                 parse_assignment(src);
 
+        } else if (current_token.type == TOKEN_UNKNOWN) {
+
+            printf("Error at line %d: Unknown token '%s'!\n",
+                   current_token.line,
+                   current_token.text);
+
+            free_ast(first);
+
+            exit(1);
+
         } else {
 
-            printf("Error: Unexpected token in program!\n");
+            printf("Error at line %d: Unexpected token in program!\n",
+                   current_token.line);
+
+            free_ast(first);
 
             exit(1);
         }
@@ -1273,6 +1363,14 @@ void generate_code(ASTNode *node,
 
                 } else if (node->op == '/' ||
                            node->op == '%') {
+
+                    if (node->right->type == AST_INT &&
+                        node->right->int_val == 0) {
+
+                        printf("Error: Division by zero at compile time!\n");
+
+                        exit(1);
+                    }
 
                     fprintf(output_file,
                             "    mov rcx, rax\n");
@@ -1516,6 +1614,14 @@ int main(int argc, char *argv[]) {
 
         output_file_path =
             argv[3];
+
+    } else if (argc >= 3) {
+
+        printf("Error: Invalid arguments!\n");
+        printf("Usage: %s <source_file.c> [-o output_file.s]\n",
+               argv[0]);
+
+        return 1;
     }
 
     printf("Compiling %s -> %s...\n",
@@ -1534,6 +1640,7 @@ int main(int argc, char *argv[]) {
 
     symbol_count = 0;
     label_sequence = 0;
+    current_line = 1;
 
     current_token =
         get_next_token(&ptr);
@@ -1550,7 +1657,8 @@ int main(int argc, char *argv[]) {
 
     if (!output_file) {
 
-        printf("Error: Could not create output file!\n");
+        printf("Error: Could not create output file %s!\n",
+               output_file_path);
 
         free_ast(root);
         free(source_code);
