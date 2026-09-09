@@ -1,7 +1,7 @@
-int x = 5;
+int x = 10;
 
-while (x) {
-    x = x - 1;
+if (x > 5) {
+    return 100;
+} else {
+    return 200;
 }
-
-return x;

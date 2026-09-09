@@ -16,10 +16,18 @@ typedef enum {
     TOKEN_KW_WHILE,
 
     TOKEN_ASSIGN,
+
     TOKEN_PLUS,
     TOKEN_MINUS,
     TOKEN_STAR,
     TOKEN_SLASH,
+
+    TOKEN_GREATER,
+    TOKEN_LESS,
+    TOKEN_GREATER_EQUAL,
+    TOKEN_LESS_EQUAL,
+    TOKEN_EQUAL,
+    TOKEN_NOT_EQUAL,
 
     TOKEN_LPAREN,
     TOKEN_RPAREN,
@@ -184,58 +192,137 @@ Token get_next_token(const char **src) {
     switch (**src) {
 
         case '=':
-            t.type = TOKEN_ASSIGN;
+
             (*src)++;
+
+            if (**src == '=') {
+
+                t.type = TOKEN_EQUAL;
+                (*src)++;
+
+            } else {
+
+                t.type = TOKEN_ASSIGN;
+            }
+
+            break;
+
+        case '!':
+
+            (*src)++;
+
+            if (**src == '=') {
+
+                t.type = TOKEN_NOT_EQUAL;
+                (*src)++;
+
+            } else {
+
+                t.type = TOKEN_UNKNOWN;
+            }
+
+            break;
+
+        case '>':
+
+            (*src)++;
+
+            if (**src == '=') {
+
+                t.type = TOKEN_GREATER_EQUAL;
+                (*src)++;
+
+            } else {
+
+                t.type = TOKEN_GREATER;
+            }
+
+            break;
+
+        case '<':
+
+            (*src)++;
+
+            if (**src == '=') {
+
+                t.type = TOKEN_LESS_EQUAL;
+                (*src)++;
+
+            } else {
+
+                t.type = TOKEN_LESS;
+            }
+
             break;
 
         case '+':
+
             t.type = TOKEN_PLUS;
             (*src)++;
+
             break;
 
         case '-':
+
             t.type = TOKEN_MINUS;
             (*src)++;
+
             break;
 
         case '*':
+
             t.type = TOKEN_STAR;
             (*src)++;
+
             break;
 
         case '/':
+
             t.type = TOKEN_SLASH;
             (*src)++;
+
             break;
 
         case '(':
+
             t.type = TOKEN_LPAREN;
             (*src)++;
+
             break;
 
         case ')':
+
             t.type = TOKEN_RPAREN;
             (*src)++;
+
             break;
 
         case '{':
+
             t.type = TOKEN_LBRACE;
             (*src)++;
+
             break;
 
         case '}':
+
             t.type = TOKEN_RBRACE;
             (*src)++;
+
             break;
 
         case ';':
+
             t.type = TOKEN_SEMICOLON;
             (*src)++;
+
             break;
 
         default:
+
             t.type = TOKEN_UNKNOWN;
             (*src)++;
+
             break;
     }
 
@@ -248,7 +335,10 @@ char* read_file(const char *filename) {
     FILE *file = fopen(filename, "rb");
 
     if (!file) {
-        printf("Error: Could not open file %s\n", filename);
+
+        printf("Error: Could not open file %s\n",
+               filename);
+
         return NULL;
     }
 
@@ -258,11 +348,15 @@ char* read_file(const char *filename) {
 
     fseek(file, 0, SEEK_SET);
 
-    char *buffer = malloc(size + 1);
+    char *buffer =
+        malloc(size + 1);
 
     if (!buffer) {
+
         printf("Error: Memory allocation failed!\n");
+
         fclose(file);
+
         return NULL;
     }
 
@@ -282,7 +376,9 @@ ASTNode* create_node(ASTNodeType type) {
         (ASTNode*)calloc(1, sizeof(ASTNode));
 
     if (!node) {
+
         printf("Error: Memory allocation failed!\n");
+
         exit(1);
     }
 
@@ -293,37 +389,41 @@ ASTNode* create_node(ASTNodeType type) {
 
 // Advance token
 void advance_token(const char **src) {
-    current_token = get_next_token(src);
+
+    current_token =
+        get_next_token(src);
 }
 
 // Add symbol
 int add_symbol(const char *name) {
 
-    int existing_offset = 0;
-
     for (int i = 0; i < symbol_count; i++) {
 
         if (strcmp(symbol_table[i].name, name) == 0) {
+
             return symbol_table[i].stack_offset;
         }
     }
 
     if (symbol_count >= 100) {
+
         printf("Error: Too many variables!\n");
+
         exit(1);
     }
 
-    int offset = (symbol_count + 1) * 8;
+    int offset =
+        (symbol_count + 1) * 8;
 
-    strcpy(symbol_table[symbol_count].name, name);
+    strcpy(symbol_table[symbol_count].name,
+           name);
 
-    symbol_table[symbol_count].stack_offset = offset;
+    symbol_table[symbol_count].stack_offset =
+        offset;
 
     symbol_count++;
 
-    existing_offset = offset;
-
-    return existing_offset;
+    return offset;
 }
 
 // Get symbol offset
@@ -332,6 +432,7 @@ int get_symbol_offset(const char *name) {
     for (int i = 0; i < symbol_count; i++) {
 
         if (strcmp(symbol_table[i].name, name) == 0) {
+
             return symbol_table[i].stack_offset;
         }
     }
@@ -382,14 +483,48 @@ ASTNode* parse_expression(const char **src) {
     }
 
     while (current_token.type == TOKEN_PLUS ||
-           current_token.type == TOKEN_MINUS) {
+           current_token.type == TOKEN_MINUS ||
+           current_token.type == TOKEN_GREATER ||
+           current_token.type == TOKEN_LESS ||
+           current_token.type == TOKEN_GREATER_EQUAL ||
+           current_token.type == TOKEN_LESS_EQUAL ||
+           current_token.type == TOKEN_EQUAL ||
+           current_token.type == TOKEN_NOT_EQUAL) {
 
-        char op;
+        char op[3];
 
-        if (current_token.type == TOKEN_PLUS)
-            op = '+';
-        else
-            op = '-';
+        if (current_token.type == TOKEN_PLUS) {
+
+            strcpy(op, "+");
+
+        } else if (current_token.type == TOKEN_MINUS) {
+
+            strcpy(op, "-");
+
+        } else if (current_token.type == TOKEN_GREATER) {
+
+            strcpy(op, ">");
+
+        } else if (current_token.type == TOKEN_LESS) {
+
+            strcpy(op, "<");
+
+        } else if (current_token.type == TOKEN_GREATER_EQUAL) {
+
+            strcpy(op, ">=");
+
+        } else if (current_token.type == TOKEN_LESS_EQUAL) {
+
+            strcpy(op, "<=");
+
+        } else if (current_token.type == TOKEN_EQUAL) {
+
+            strcpy(op, "==");
+
+        } else {
+
+            strcpy(op, "!=");
+        }
 
         advance_token(src);
 
@@ -397,17 +532,39 @@ ASTNode* parse_expression(const char **src) {
             parse_primary(src);
 
         if (!right) {
+
             printf("Error: Expected expression after operator!\n");
+
             free_ast(left);
+
             exit(1);
         }
 
         ASTNode *node =
             create_node(AST_BINARY_EXPR);
 
-        node->op = op;
+        node->op = op[0];
+
         node->left = left;
         node->right = right;
+
+        if (strcmp(op, ">") == 0)
+            node->op = '>';
+
+        else if (strcmp(op, "<") == 0)
+            node->op = '<';
+
+        else if (strcmp(op, ">=") == 0)
+            node->op = 'G';
+
+        else if (strcmp(op, "<=") == 0)
+            node->op = 'L';
+
+        else if (strcmp(op, "==") == 0)
+            node->op = 'E';
+
+        else if (strcmp(op, "!=") == 0)
+            node->op = 'N';
 
         left = node;
     }
@@ -427,6 +584,7 @@ ASTNode* parse_variable_declaration(const char **src) {
     if (current_token.type != TOKEN_IDENTIFIER) {
 
         printf("Error: Expected variable name!\n");
+
         exit(1);
     }
 
@@ -441,7 +599,9 @@ ASTNode* parse_variable_declaration(const char **src) {
     if (current_token.type != TOKEN_ASSIGN) {
 
         printf("Error: Expected '=' after variable name!\n");
+
         free_ast(node);
+
         exit(1);
     }
 
@@ -453,14 +613,18 @@ ASTNode* parse_variable_declaration(const char **src) {
     if (!node->expr) {
 
         printf("Error: Expected expression after '='!\n");
+
         free_ast(node);
+
         exit(1);
     }
 
     if (current_token.type != TOKEN_SEMICOLON) {
 
         printf("Error: Expected ';' after variable declaration!\n");
+
         free_ast(node);
+
         exit(1);
     }
 
@@ -469,7 +633,6 @@ ASTNode* parse_variable_declaration(const char **src) {
     return node;
 }
 
-// Parse assignment
 // Parse assignment
 ASTNode* parse_assignment(const char **src) {
 
@@ -502,14 +665,18 @@ ASTNode* parse_assignment(const char **src) {
     if (!node->expr) {
 
         printf("Error: Expected expression after '='!\n");
+
         free_ast(node);
+
         exit(1);
     }
 
     if (current_token.type != TOKEN_SEMICOLON) {
 
         printf("Error: Expected ';' after assignment!\n");
+
         free_ast(node);
+
         exit(1);
     }
 
@@ -536,14 +703,18 @@ ASTNode* parse_return_statement(const char **src) {
     if (!node->return_value) {
 
         printf("Error: Expected return expression!\n");
+
         free_ast(node);
+
         exit(1);
     }
 
     if (current_token.type != TOKEN_SEMICOLON) {
 
         printf("Error: Expected ';' after return!\n");
+
         free_ast(node);
+
         exit(1);
     }
 
@@ -558,6 +729,7 @@ ASTNode* parse_block(const char **src) {
     if (current_token.type != TOKEN_LBRACE) {
 
         printf("Error: Expected '{'!\n");
+
         exit(1);
     }
 
@@ -599,14 +771,18 @@ ASTNode* parse_block(const char **src) {
         } else {
 
             printf("Error: Unexpected token inside block!\n");
+
             exit(1);
         }
 
         if (statement) {
 
             if (!first) {
+
                 first = statement;
+
             } else {
+
                 last->next = statement;
             }
 
@@ -617,7 +793,9 @@ ASTNode* parse_block(const char **src) {
     if (current_token.type != TOKEN_RBRACE) {
 
         printf("Error: Expected '}'!\n");
+
         free_ast(first);
+
         exit(1);
     }
 
@@ -638,6 +816,7 @@ ASTNode* parse_if_statement(const char **src) {
     if (current_token.type != TOKEN_LPAREN) {
 
         printf("Error: Expected '(' after if!\n");
+
         exit(1);
     }
 
@@ -652,14 +831,18 @@ ASTNode* parse_if_statement(const char **src) {
     if (!node->cond) {
 
         printf("Error: Expected condition inside if!\n");
+
         free_ast(node);
+
         exit(1);
     }
 
     if (current_token.type != TOKEN_RPAREN) {
 
         printf("Error: Expected ')' after condition!\n");
+
         free_ast(node);
+
         exit(1);
     }
 
@@ -691,6 +874,7 @@ ASTNode* parse_while_statement(const char **src) {
     if (current_token.type != TOKEN_LPAREN) {
 
         printf("Error: Expected '(' after while!\n");
+
         exit(1);
     }
 
@@ -705,14 +889,18 @@ ASTNode* parse_while_statement(const char **src) {
     if (!node->cond) {
 
         printf("Error: Expected condition inside while!\n");
+
         free_ast(node);
+
         exit(1);
     }
 
     if (current_token.type != TOKEN_RPAREN) {
 
         printf("Error: Expected ')' after condition!\n");
+
         free_ast(node);
+
         exit(1);
     }
 
@@ -762,14 +950,18 @@ ASTNode* parse_program(const char **src) {
         } else {
 
             printf("Error: Unexpected token in program!\n");
+
             exit(1);
         }
 
         if (statement) {
 
             if (!first) {
+
                 first = statement;
+
             } else {
+
                 last->next = statement;
             }
 
@@ -806,8 +998,21 @@ void print_ast(ASTNode *node, int level) {
 
             case AST_BINARY_EXPR:
 
-                printf("BinaryExpr (%c)\n",
-                       node->op);
+                if (node->op == 'G')
+                    printf("BinaryExpr (>=)\n");
+
+                else if (node->op == 'L')
+                    printf("BinaryExpr (<=)\n");
+
+                else if (node->op == 'E')
+                    printf("BinaryExpr (==)\n");
+
+                else if (node->op == 'N')
+                    printf("BinaryExpr (!=)\n");
+
+                else
+                    printf("BinaryExpr (%c)\n",
+                           node->op);
 
                 print_ast(node->left,
                           level + 1);
@@ -965,6 +1170,45 @@ void generate_code(ASTNode *node,
 
                     fprintf(output_file,
                             "    sub rax, rbx\n");
+
+                } else {
+
+                    fprintf(output_file,
+                            "    cmp rax, rbx\n");
+
+                    if (node->op == '>') {
+
+                        fprintf(output_file,
+                                "    setg al\n");
+
+                    } else if (node->op == '<') {
+
+                        fprintf(output_file,
+                                "    setl al\n");
+
+                    } else if (node->op == 'G') {
+
+                        fprintf(output_file,
+                                "    setge al\n");
+
+                    } else if (node->op == 'L') {
+
+                        fprintf(output_file,
+                                "    setle al\n");
+
+                    } else if (node->op == 'E') {
+
+                        fprintf(output_file,
+                                "    sete al\n");
+
+                    } else if (node->op == 'N') {
+
+                        fprintf(output_file,
+                                "    setne al\n");
+                    }
+
+                    fprintf(output_file,
+                            "    movzx rax, al\n");
                 }
 
                 break;
