@@ -495,18 +495,9 @@ int main(int argc, char *argv[]) {
 
     const char *ptr = source_code;
 
-    // Open output assembly file
-    FILE *output_file = fopen(output_file_path, "w");
-
-    if (!output_file) {
-        printf("Error: Could not open output file %s\n", output_file_path);
-        free(source_code);
-        return 1;
-    }
-
     printf("Compiling %s -> %s...\n", input_file_path, output_file_path);
 
-    // Load first token
+    // Start lexer
     advance_token(&ptr);
 
     // Generate AST
@@ -514,13 +505,22 @@ int main(int argc, char *argv[]) {
 
     if (!ast_root) {
         printf("Error: Could not parse source file!\n");
-        fclose(output_file);
         free(source_code);
         return 1;
     }
 
     printf("Generating AST\n");
     print_ast(ast_root, 0);
+
+    // Open output assembly file
+    FILE *output_file = fopen(output_file_path, "w");
+
+    if (!output_file) {
+        printf("Error: Could not open output file %s\n", output_file_path);
+        free_ast(ast_root);
+        free(source_code);
+        return 1;
+    }
 
     // Write assembly header
     fprintf(output_file, ".intel_syntax noprefix\n");
