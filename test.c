@@ -1,5 +1,1 @@
-int x = 10;
-
-x = x + 5;
-
-return x;
+return (10 + 5) * 2;
