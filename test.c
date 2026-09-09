@@ -1,12 +1,7 @@
 int x = 10;
 
-while (x > 0) {
-
-    if (x % 2 == 0) {
-        x = x - 2;
-    } else {
-        x = x - 1;
-    }
+if (x > 5) {
+    return x * 2;
+} else {
+    return 0;
 }
-
-return x;

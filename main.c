@@ -789,7 +789,11 @@ ASTNode* parse_assignment(const char **src) {
     advance_token(src);
 
     if (current_token.type != TOKEN_ASSIGN) {
-        return NULL;
+
+        printf("Error at line %d: Expected '=' after variable name!\n",
+               current_token.line);
+
+        exit(1);
     }
 
     advance_token(src);
@@ -1290,6 +1294,34 @@ void print_ast(ASTNode *node, int level) {
     }
 }
 
+// Check if a block ends with return
+int block_ends_with_return(ASTNode *node) {
+
+    if (!node) {
+        return 0;
+    }
+
+    while (node->next) {
+        node = node->next;
+    }
+
+    if (node->type == AST_RETURN_STMT) {
+        return 1;
+    }
+
+    if (node->type == AST_IF_STMT) {
+
+        if (!node->else_block) {
+            return 0;
+        }
+
+        return block_ends_with_return(node->then_block) &&
+               block_ends_with_return(node->else_block);
+    }
+
+    return 0;
+}
+
 // Generate assembly
 void generate_code(ASTNode *node,
                    FILE *output_file) {
@@ -1497,36 +1529,67 @@ void generate_code(ASTNode *node,
                 int label_id =
                     label_sequence++;
 
+                int then_returns =
+                    block_ends_with_return(node->then_block);
+
+                int else_returns = 0;
+
+                if (node->else_block) {
+
+                    else_returns =
+                        block_ends_with_return(node->else_block);
+                }
+
                 generate_code(node->cond,
                               output_file);
 
                 fprintf(output_file,
                         "    cmp rax, 0\n");
 
-                fprintf(output_file,
-                        "    je .Lelse_%d\n",
-                        label_id);
-
-                generate_code(node->then_block,
-                              output_file);
-
-                fprintf(output_file,
-                        "    jmp .Lend_%d\n",
-                        label_id);
-
-                fprintf(output_file,
-                        ".Lelse_%d:\n",
-                        label_id);
-
                 if (node->else_block) {
+
+                    fprintf(output_file,
+                            "    je .Lelse_%d\n",
+                            label_id);
+
+                    generate_code(node->then_block,
+                                  output_file);
+
+                    if (!then_returns) {
+
+                        fprintf(output_file,
+                                "    jmp .Lend_%d\n",
+                                label_id);
+                    }
+
+                    fprintf(output_file,
+                            ".Lelse_%d:\n",
+                            label_id);
 
                     generate_code(node->else_block,
                                   output_file);
-                }
 
-                fprintf(output_file,
-                        ".Lend_%d:\n",
-                        label_id);
+                    if (!then_returns ||
+                        !else_returns) {
+
+                        fprintf(output_file,
+                                ".Lend_%d:\n",
+                                label_id);
+                    }
+
+                } else {
+
+                    fprintf(output_file,
+                            "    je .Lend_%d\n",
+                            label_id);
+
+                    generate_code(node->then_block,
+                                  output_file);
+
+                    fprintf(output_file,
+                            ".Lend_%d:\n",
+                            label_id);
+                }
 
                 break;
             }
