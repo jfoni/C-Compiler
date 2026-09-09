@@ -21,6 +21,7 @@ typedef enum {
     TOKEN_MINUS,
     TOKEN_STAR,
     TOKEN_SLASH,
+    TOKEN_MODULO,
 
     TOKEN_GREATER,
     TOKEN_LESS,
@@ -93,6 +94,7 @@ typedef struct ASTNode {
 // Parser function declarations
 ASTNode* parse_if_statement(const char **src);
 ASTNode* parse_while_statement(const char **src);
+ASTNode* parse_expression(const char **src);
 
 void free_ast(ASTNode *node);
 
@@ -283,6 +285,13 @@ Token get_next_token(const char **src) {
 
             break;
 
+        case '%':
+
+            t.type = TOKEN_MODULO;
+            (*src)++;
+
+            break;
+
         case '(':
 
             t.type = TOKEN_LPAREN;
@@ -469,14 +478,94 @@ ASTNode* parse_primary(const char **src) {
         return node;
     }
 
+    if (current_token.type == TOKEN_LPAREN) {
+
+        advance_token(src);
+
+        ASTNode *node =
+            parse_expression(src);
+
+        if (!node) {
+
+            printf("Error: Expected expression inside parentheses!\n");
+
+            exit(1);
+        }
+
+        if (current_token.type != TOKEN_RPAREN) {
+
+            printf("Error: Expected ')'!\n");
+
+            free_ast(node);
+
+            exit(1);
+        }
+
+        advance_token(src);
+
+        return node;
+    }
+
     return NULL;
 }
 
-// Parse expression
-ASTNode* parse_expression(const char **src) {
+// Parse multiplication, division and modulus
+ASTNode* parse_multiplication(const char **src) {
 
     ASTNode *left =
         parse_primary(src);
+
+    if (!left) {
+        return NULL;
+    }
+
+    while (current_token.type == TOKEN_STAR ||
+           current_token.type == TOKEN_SLASH ||
+           current_token.type == TOKEN_MODULO) {
+
+        char op;
+
+        if (current_token.type == TOKEN_STAR)
+            op = '*';
+
+        else if (current_token.type == TOKEN_SLASH)
+            op = '/';
+
+        else
+            op = '%';
+
+        advance_token(src);
+
+        ASTNode *right =
+            parse_primary(src);
+
+        if (!right) {
+
+            printf("Error: Expected expression after operator!\n");
+
+            free_ast(left);
+
+            exit(1);
+        }
+
+        ASTNode *node =
+            create_node(AST_BINARY_EXPR);
+
+        node->op = op;
+        node->left = left;
+        node->right = right;
+
+        left = node;
+    }
+
+    return left;
+}
+
+// Parse addition, subtraction and comparison
+ASTNode* parse_expression(const char **src) {
+
+    ASTNode *left =
+        parse_multiplication(src);
 
     if (!left) {
         return NULL;
@@ -529,7 +618,7 @@ ASTNode* parse_expression(const char **src) {
         advance_token(src);
 
         ASTNode *right =
-            parse_primary(src);
+            parse_multiplication(src);
 
         if (!right) {
 
@@ -1149,13 +1238,13 @@ void generate_code(ASTNode *node,
 
             case AST_BINARY_EXPR:
 
-                generate_code(node->right,
+                generate_code(node->left,
                               output_file);
 
                 fprintf(output_file,
                         "    push rax\n");
 
-                generate_code(node->left,
+                generate_code(node->right,
                               output_file);
 
                 fprintf(output_file,
@@ -1169,12 +1258,50 @@ void generate_code(ASTNode *node,
                 } else if (node->op == '-') {
 
                     fprintf(output_file,
-                            "    sub rax, rbx\n");
+                            "    mov rcx, rax\n");
+
+                    fprintf(output_file,
+                            "    mov rax, rbx\n");
+
+                    fprintf(output_file,
+                            "    sub rax, rcx\n");
+
+                } else if (node->op == '*') {
+
+                    fprintf(output_file,
+                            "    imul rax, rbx\n");
+
+                } else if (node->op == '/' ||
+                           node->op == '%') {
+
+                    fprintf(output_file,
+                            "    mov rcx, rax\n");
+
+                    fprintf(output_file,
+                            "    mov rax, rbx\n");
+
+                    fprintf(output_file,
+                            "    cqo\n");
+
+                    fprintf(output_file,
+                            "    idiv rcx\n");
+
+                    if (node->op == '%') {
+
+                        fprintf(output_file,
+                                "    mov rax, rdx\n");
+                    }
 
                 } else {
 
                     fprintf(output_file,
-                            "    cmp rax, rbx\n");
+                            "    mov rcx, rax\n");
+
+                    fprintf(output_file,
+                            "    mov rax, rbx\n");
+
+                    fprintf(output_file,
+                            "    cmp rax, rcx\n");
 
                     if (node->op == '>') {
 
