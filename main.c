@@ -20,11 +20,13 @@ typedef enum {
     TOKEN_MINUS,
     TOKEN_STAR,
     TOKEN_SLASH,
+
     TOKEN_LPAREN,
     TOKEN_RPAREN,
     TOKEN_LBRACE,
     TOKEN_RBRACE,
     TOKEN_SEMICOLON,
+
     TOKEN_EOF,
     TOKEN_UNKNOWN
 } TokenType;
@@ -36,7 +38,7 @@ typedef struct {
     char text[32];
 } Token;
 
-// Symbol table
+// Symbol table entry
 typedef struct {
     char name[32];
     int stack_offset;
@@ -45,171 +47,13 @@ typedef struct {
 Symbol symbol_table[100];
 int symbol_count = 0;
 
-// Add variable to symbol table
-int add_symbol(const char *name) {
-
-    for (int i = 0; i < symbol_count; i++) {
-        if (strcmp(symbol_table[i].name, name) == 0) {
-            return symbol_table[i].stack_offset;
-        }
-    }
-
-    if (symbol_count >= 100) {
-        printf("Error: Too many variables!\n");
-        exit(1);
-    }
-
-    symbol_count++;
-
-    int offset = symbol_count * 8;
-
-    strcpy(symbol_table[symbol_count - 1].name, name);
-    symbol_table[symbol_count - 1].stack_offset = offset;
-
-    return offset;
-}
-
-// Get variable offset
-int get_symbol_offset(const char *name) {
-
-    for (int i = 0; i < symbol_count; i++) {
-        if (strcmp(symbol_table[i].name, name) == 0) {
-            return symbol_table[i].stack_offset;
-        }
-    }
-
-    printf("Error: Variable '%s' undeclared!\n", name);
-    exit(1);
-}
-
-// Check if a word is a keyword or identifier
-TokenType check_keyword(const char *text) {
-
-    if (strcmp(text, "int") == 0) {
-        return TOKEN_KW_INT;
-    }
-
-    if (strcmp(text, "return") == 0) {
-        return TOKEN_KW_RETURN;
-    }
-
-    if (strcmp(text, "if") == 0) {
-        return TOKEN_KW_IF;
-    }
-
-    if (strcmp(text, "else") == 0) {
-        return TOKEN_KW_ELSE;
-    }
-
-    if (strcmp(text, "while") == 0) {
-        return TOKEN_KW_WHILE;
-    }
-
-    return TOKEN_IDENTIFIER;
-}
-
-// Lexer function
-Token get_next_token(const char **src) {
-
-    // Skip spaces
-    while (**src && isspace(**src)) {
-        (*src)++;
-    }
-
-    // End of input
-    if (**src == '\0') {
-        return (Token){TOKEN_EOF, 0, ""};
-    }
-
-    // Read number
-    if (isdigit(**src)) {
-
-        int val = 0;
-
-        while (isdigit(**src)) {
-            val = val * 10 + (**src - '0');
-            (*src)++;
-        }
-
-        return (Token){TOKEN_INT, val, ""};
-    }
-
-    // Read identifier or keyword
-    if (isalpha(**src) || **src == '_') {
-
-        char buf[32];
-        int len = 0;
-
-        while (isalnum(**src) || **src == '_') {
-
-            if (len < 31) {
-                buf[len++] = **src;
-            }
-
-            (*src)++;
-        }
-
-        buf[len] = '\0';
-
-        Token t;
-
-        // Check if the word is a keyword
-        t.type = check_keyword(buf);
-
-        t.value = 0;
-
-        strcpy(t.text, buf);
-
-        return t;
-    }
-
-    // Read operators and symbols
-    char current = **src;
-    (*src)++;
-
-    switch (current) {
-
-        case '=':
-            return (Token){TOKEN_ASSIGN, 0, "="};
-
-        case '+':
-            return (Token){TOKEN_PLUS, 0, "+"};
-
-        case '-':
-            return (Token){TOKEN_MINUS, 0, "-"};
-
-        case '*':
-            return (Token){TOKEN_STAR, 0, "*"};
-
-        case '/':
-            return (Token){TOKEN_SLASH, 0, "/"};
-
-        case '(':
-            return (Token){TOKEN_LPAREN, 0, "("};
-
-        case ')':
-            return (Token){TOKEN_RPAREN, 0, ")"};
-
-        case '{':
-            return (Token){TOKEN_LBRACE, 0, "{"};
-
-        case '}':
-            return (Token){TOKEN_RBRACE, 0, "}"};
-
-        case ';':
-            return (Token){TOKEN_SEMICOLON, 0, ";"};
-
-        default:
-            return (Token){TOKEN_UNKNOWN, 0, ""};
-    }
-}
-
 // AST node types
 typedef enum {
     AST_INT,
     AST_VAR,
     AST_BINARY_EXPR,
     AST_VAR_DECL,
+    AST_ASSIGN,
     AST_RETURN_STMT,
     AST_IF_STMT,
     AST_WHILE_STMT
@@ -220,30 +64,222 @@ typedef struct ASTNode {
     ASTNodeType type;
 
     int int_val;
-
     char op;
-
     char var_name[32];
 
     struct ASTNode *left;
     struct ASTNode *right;
 
     struct ASTNode *expr;
-
     struct ASTNode *return_value;
 
     struct ASTNode *cond;
     struct ASTNode *then_block;
     struct ASTNode *else_block;
-    struct ASTNode *body;
 
+    struct ASTNode *body;
     struct ASTNode *next;
+
 } ASTNode;
 
-// Create a new AST node
+// Parser function declarations
+ASTNode* parse_if_statement(const char **src);
+ASTNode* parse_while_statement(const char **src);
+
+void free_ast(ASTNode *node);
+
+// Current token
+Token current_token;
+
+// Label counter
+int label_sequence = 0;
+
+// Check keyword
+TokenType check_keyword(const char *text) {
+
+    if (strcmp(text, "int") == 0)
+        return TOKEN_KW_INT;
+
+    if (strcmp(text, "return") == 0)
+        return TOKEN_KW_RETURN;
+
+    if (strcmp(text, "if") == 0)
+        return TOKEN_KW_IF;
+
+    if (strcmp(text, "else") == 0)
+        return TOKEN_KW_ELSE;
+
+    if (strcmp(text, "while") == 0)
+        return TOKEN_KW_WHILE;
+
+    return TOKEN_IDENTIFIER;
+}
+
+// Lexer function
+Token get_next_token(const char **src) {
+
+    Token t;
+
+    t.type = TOKEN_UNKNOWN;
+    t.value = 0;
+    t.text[0] = '\0';
+
+    // Skip spaces
+    while (**src == ' ' ||
+           **src == '\n' ||
+           **src == '\t' ||
+           **src == '\r') {
+
+        (*src)++;
+    }
+
+    // End of input
+    if (**src == '\0') {
+        t.type = TOKEN_EOF;
+        return t;
+    }
+
+    // Read number
+    if (isdigit(**src)) {
+
+        int value = 0;
+
+        while (isdigit(**src)) {
+
+            value = value * 10 + (**src - '0');
+            (*src)++;
+        }
+
+        t.type = TOKEN_INT;
+        t.value = value;
+
+        return t;
+    }
+
+    // Read identifier or keyword
+    if (isalpha(**src) || **src == '_') {
+
+        char buf[32];
+        int i = 0;
+
+        while (isalnum(**src) || **src == '_') {
+
+            if (i < 31) {
+                buf[i++] = **src;
+            }
+
+            (*src)++;
+        }
+
+        buf[i] = '\0';
+
+        strcpy(t.text, buf);
+
+        t.type = check_keyword(buf);
+
+        return t;
+    }
+
+    // Read operators and symbols
+    switch (**src) {
+
+        case '=':
+            t.type = TOKEN_ASSIGN;
+            (*src)++;
+            break;
+
+        case '+':
+            t.type = TOKEN_PLUS;
+            (*src)++;
+            break;
+
+        case '-':
+            t.type = TOKEN_MINUS;
+            (*src)++;
+            break;
+
+        case '*':
+            t.type = TOKEN_STAR;
+            (*src)++;
+            break;
+
+        case '/':
+            t.type = TOKEN_SLASH;
+            (*src)++;
+            break;
+
+        case '(':
+            t.type = TOKEN_LPAREN;
+            (*src)++;
+            break;
+
+        case ')':
+            t.type = TOKEN_RPAREN;
+            (*src)++;
+            break;
+
+        case '{':
+            t.type = TOKEN_LBRACE;
+            (*src)++;
+            break;
+
+        case '}':
+            t.type = TOKEN_RBRACE;
+            (*src)++;
+            break;
+
+        case ';':
+            t.type = TOKEN_SEMICOLON;
+            (*src)++;
+            break;
+
+        default:
+            t.type = TOKEN_UNKNOWN;
+            (*src)++;
+            break;
+    }
+
+    return t;
+}
+
+// Read source file
+char* read_file(const char *filename) {
+
+    FILE *file = fopen(filename, "rb");
+
+    if (!file) {
+        printf("Error: Could not open file %s\n", filename);
+        return NULL;
+    }
+
+    fseek(file, 0, SEEK_END);
+
+    long size = ftell(file);
+
+    fseek(file, 0, SEEK_SET);
+
+    char *buffer = malloc(size + 1);
+
+    if (!buffer) {
+        printf("Error: Memory allocation failed!\n");
+        fclose(file);
+        return NULL;
+    }
+
+    fread(buffer, 1, size, file);
+
+    buffer[size] = '\0';
+
+    fclose(file);
+
+    return buffer;
+}
+
+// Create AST node
 ASTNode* create_node(ASTNodeType type) {
 
-    ASTNode *node = (ASTNode*)calloc(1, sizeof(ASTNode));
+    ASTNode *node =
+        (ASTNode*)calloc(1, sizeof(ASTNode));
 
     if (!node) {
         printf("Error: Memory allocation failed!\n");
@@ -255,17 +291,52 @@ ASTNode* create_node(ASTNodeType type) {
     return node;
 }
 
-// Parser current token
-ASTNode* parse_if_statement(const char **src);
-ASTNode* parse_while_statement(const char **src);
-
-void free_ast(ASTNode *node);
-
-Token current_token;
-
-// Get next token from lexer
+// Advance token
 void advance_token(const char **src) {
     current_token = get_next_token(src);
+}
+
+// Add symbol
+int add_symbol(const char *name) {
+
+    int existing_offset = 0;
+
+    for (int i = 0; i < symbol_count; i++) {
+
+        if (strcmp(symbol_table[i].name, name) == 0) {
+            return symbol_table[i].stack_offset;
+        }
+    }
+
+    if (symbol_count >= 100) {
+        printf("Error: Too many variables!\n");
+        exit(1);
+    }
+
+    int offset = (symbol_count + 1) * 8;
+
+    strcpy(symbol_table[symbol_count].name, name);
+
+    symbol_table[symbol_count].stack_offset = offset;
+
+    symbol_count++;
+
+    existing_offset = offset;
+
+    return existing_offset;
+}
+
+// Get symbol offset
+int get_symbol_offset(const char *name) {
+
+    for (int i = 0; i < symbol_count; i++) {
+
+        if (strcmp(symbol_table[i].name, name) == 0) {
+            return symbol_table[i].stack_offset;
+        }
+    }
+
+    return -1;
 }
 
 // Parse primary expression
@@ -273,9 +344,11 @@ ASTNode* parse_primary(const char **src) {
 
     if (current_token.type == TOKEN_INT) {
 
-        ASTNode *node = create_node(AST_INT);
+        ASTNode *node =
+            create_node(AST_INT);
 
-        node->int_val = current_token.value;
+        node->int_val =
+            current_token.value;
 
         advance_token(src);
 
@@ -284,9 +357,11 @@ ASTNode* parse_primary(const char **src) {
 
     if (current_token.type == TOKEN_IDENTIFIER) {
 
-        ASTNode *node = create_node(AST_VAR);
+        ASTNode *node =
+            create_node(AST_VAR);
 
-        strcpy(node->var_name, current_token.text);
+        strcpy(node->var_name,
+               current_token.text);
 
         advance_token(src);
 
@@ -296,25 +371,30 @@ ASTNode* parse_primary(const char **src) {
     return NULL;
 }
 
-// Parse binary expression
+// Parse expression
 ASTNode* parse_expression(const char **src) {
 
-    ASTNode *left = parse_primary(src);
+    ASTNode *left =
+        parse_primary(src);
+
+    if (!left) {
+        return NULL;
+    }
 
     while (current_token.type == TOKEN_PLUS ||
            current_token.type == TOKEN_MINUS) {
 
         char op;
 
-        if (current_token.type == TOKEN_PLUS) {
+        if (current_token.type == TOKEN_PLUS)
             op = '+';
-        } else {
+        else
             op = '-';
-        }
 
         advance_token(src);
 
-        ASTNode *right = parse_primary(src);
+        ASTNode *right =
+            parse_primary(src);
 
         if (!right) {
             printf("Error: Expected expression after operator!\n");
@@ -322,13 +402,14 @@ ASTNode* parse_expression(const char **src) {
             exit(1);
         }
 
-        ASTNode *binary_node = create_node(AST_BINARY_EXPR);
+        ASTNode *node =
+            create_node(AST_BINARY_EXPR);
 
-        binary_node->op = op;
-        binary_node->left = left;
-        binary_node->right = right;
+        node->op = op;
+        node->left = left;
+        node->right = right;
 
-        left = binary_node;
+        left = node;
     }
 
     return left;
@@ -344,35 +425,91 @@ ASTNode* parse_variable_declaration(const char **src) {
     advance_token(src);
 
     if (current_token.type != TOKEN_IDENTIFIER) {
-        printf("Error: Expected variable name after int!\n");
+
+        printf("Error: Expected variable name!\n");
         exit(1);
     }
 
-    ASTNode *node = create_node(AST_VAR_DECL);
+    ASTNode *node =
+        create_node(AST_VAR_DECL);
 
-    strcpy(node->var_name, current_token.text);
+    strcpy(node->var_name,
+           current_token.text);
 
     advance_token(src);
 
     if (current_token.type != TOKEN_ASSIGN) {
+
         printf("Error: Expected '=' after variable name!\n");
-        free(node);
+        free_ast(node);
         exit(1);
     }
 
     advance_token(src);
 
-    node->expr = parse_expression(src);
+    node->expr =
+        parse_expression(src);
 
     if (!node->expr) {
-        printf("Error: Expected value for variable!\n");
-        free(node);
+
+        printf("Error: Expected expression after '='!\n");
+        free_ast(node);
         exit(1);
     }
 
     if (current_token.type != TOKEN_SEMICOLON) {
+
         printf("Error: Expected ';' after variable declaration!\n");
-        free(node);
+        free_ast(node);
+        exit(1);
+    }
+
+    advance_token(src);
+
+    return node;
+}
+
+// Parse assignment
+// Parse assignment
+ASTNode* parse_assignment(const char **src) {
+
+    if (current_token.type != TOKEN_IDENTIFIER) {
+        return NULL;
+    }
+
+    char variable_name[32];
+
+    strcpy(variable_name,
+           current_token.text);
+
+    advance_token(src);
+
+    if (current_token.type != TOKEN_ASSIGN) {
+        return NULL;
+    }
+
+    advance_token(src);
+
+    ASTNode *node =
+        create_node(AST_ASSIGN);
+
+    strcpy(node->var_name,
+           variable_name);
+
+    node->expr =
+        parse_expression(src);
+
+    if (!node->expr) {
+
+        printf("Error: Expected expression after '='!\n");
+        free_ast(node);
+        exit(1);
+    }
+
+    if (current_token.type != TOKEN_SEMICOLON) {
+
+        printf("Error: Expected ';' after assignment!\n");
+        free_ast(node);
         exit(1);
     }
 
@@ -390,19 +527,23 @@ ASTNode* parse_return_statement(const char **src) {
 
     advance_token(src);
 
-    ASTNode *node = create_node(AST_RETURN_STMT);
+    ASTNode *node =
+        create_node(AST_RETURN_STMT);
 
-    node->return_value = parse_expression(src);
+    node->return_value =
+        parse_expression(src);
 
     if (!node->return_value) {
-        printf("Error: Expected return value!\n");
-        free(node);
+
+        printf("Error: Expected return expression!\n");
+        free_ast(node);
         exit(1);
     }
 
     if (current_token.type != TOKEN_SEMICOLON) {
-        printf("Error: Expected ';' after return statement!\n");
-        free(node);
+
+        printf("Error: Expected ';' after return!\n");
+        free_ast(node);
         exit(1);
     }
 
@@ -415,14 +556,15 @@ ASTNode* parse_return_statement(const char **src) {
 ASTNode* parse_block(const char **src) {
 
     if (current_token.type != TOKEN_LBRACE) {
+
         printf("Error: Expected '{'!\n");
         exit(1);
     }
 
     advance_token(src);
 
-    ASTNode *head = NULL;
-    ASTNode *tail = NULL;
+    ASTNode *first = NULL;
+    ASTNode *last = NULL;
 
     while (current_token.type != TOKEN_RBRACE &&
            current_token.type != TOKEN_EOF) {
@@ -430,35 +572,58 @@ ASTNode* parse_block(const char **src) {
         ASTNode *statement = NULL;
 
         if (current_token.type == TOKEN_KW_INT) {
-            statement = parse_variable_declaration(src);
+
+            statement =
+                parse_variable_declaration(src);
+
         } else if (current_token.type == TOKEN_KW_RETURN) {
-            statement = parse_return_statement(src);
+
+            statement =
+                parse_return_statement(src);
+
         } else if (current_token.type == TOKEN_KW_IF) {
-            statement = parse_if_statement(src);
+
+            statement =
+                parse_if_statement(src);
+
         } else if (current_token.type == TOKEN_KW_WHILE) {
-            statement = parse_while_statement(src);
+
+            statement =
+                parse_while_statement(src);
+
+        } else if (current_token.type == TOKEN_IDENTIFIER) {
+
+            statement =
+                parse_assignment(src);
+
         } else {
+
             printf("Error: Unexpected token inside block!\n");
             exit(1);
         }
 
-        if (!head) {
-            head = statement;
-            tail = statement;
-        } else {
-            tail->next = statement;
-            tail = statement;
+        if (statement) {
+
+            if (!first) {
+                first = statement;
+            } else {
+                last->next = statement;
+            }
+
+            last = statement;
         }
     }
 
     if (current_token.type != TOKEN_RBRACE) {
+
         printf("Error: Expected '}'!\n");
+        free_ast(first);
         exit(1);
     }
 
     advance_token(src);
 
-    return head;
+    return first;
 }
 
 // Parse if statement
@@ -471,37 +636,44 @@ ASTNode* parse_if_statement(const char **src) {
     advance_token(src);
 
     if (current_token.type != TOKEN_LPAREN) {
+
         printf("Error: Expected '(' after if!\n");
         exit(1);
     }
 
     advance_token(src);
 
-    ASTNode *node = create_node(AST_IF_STMT);
+    ASTNode *node =
+        create_node(AST_IF_STMT);
 
-    node->cond = parse_expression(src);
+    node->cond =
+        parse_expression(src);
 
     if (!node->cond) {
+
         printf("Error: Expected condition inside if!\n");
-        free(node);
+        free_ast(node);
         exit(1);
     }
 
     if (current_token.type != TOKEN_RPAREN) {
+
         printf("Error: Expected ')' after condition!\n");
-        free(node);
+        free_ast(node);
         exit(1);
     }
 
     advance_token(src);
 
-    node->then_block = parse_block(src);
+    node->then_block =
+        parse_block(src);
 
     if (current_token.type == TOKEN_KW_ELSE) {
 
         advance_token(src);
 
-        node->else_block = parse_block(src);
+        node->else_block =
+            parse_block(src);
     }
 
     return node;
@@ -517,141 +689,192 @@ ASTNode* parse_while_statement(const char **src) {
     advance_token(src);
 
     if (current_token.type != TOKEN_LPAREN) {
+
         printf("Error: Expected '(' after while!\n");
         exit(1);
     }
 
     advance_token(src);
 
-    ASTNode *node = create_node(AST_WHILE_STMT);
+    ASTNode *node =
+        create_node(AST_WHILE_STMT);
 
-    node->cond = parse_expression(src);
+    node->cond =
+        parse_expression(src);
 
     if (!node->cond) {
+
         printf("Error: Expected condition inside while!\n");
-        free(node);
+        free_ast(node);
         exit(1);
     }
 
     if (current_token.type != TOKEN_RPAREN) {
+
         printf("Error: Expected ')' after condition!\n");
-        free(node);
+        free_ast(node);
         exit(1);
     }
 
     advance_token(src);
 
-    node->body = parse_block(src);
+    node->body =
+        parse_block(src);
 
     return node;
 }
 
-// Parse all statements
+// Parse program
 ASTNode* parse_program(const char **src) {
 
-    ASTNode *head = NULL;
-    ASTNode *tail = NULL;
+    ASTNode *first = NULL;
+    ASTNode *last = NULL;
 
     while (current_token.type != TOKEN_EOF) {
 
         ASTNode *statement = NULL;
 
         if (current_token.type == TOKEN_KW_INT) {
-            statement = parse_variable_declaration(src);
+
+            statement =
+                parse_variable_declaration(src);
+
         } else if (current_token.type == TOKEN_KW_RETURN) {
-            statement = parse_return_statement(src);
+
+            statement =
+                parse_return_statement(src);
+
         } else if (current_token.type == TOKEN_KW_IF) {
-            statement = parse_if_statement(src);
+
+            statement =
+                parse_if_statement(src);
+
         } else if (current_token.type == TOKEN_KW_WHILE) {
-            statement = parse_while_statement(src);
+
+            statement =
+                parse_while_statement(src);
+
+        } else if (current_token.type == TOKEN_IDENTIFIER) {
+
+            statement =
+                parse_assignment(src);
+
         } else {
-            printf("Error: Unexpected token!\n");
+
+            printf("Error: Unexpected token in program!\n");
             exit(1);
         }
 
-        if (!head) {
-            head = statement;
-            tail = statement;
-        } else {
-            tail->next = statement;
-            tail = statement;
+        if (statement) {
+
+            if (!first) {
+                first = statement;
+            } else {
+                last->next = statement;
+            }
+
+            last = statement;
         }
     }
 
-    return head;
+    return first;
 }
 
 // Print AST
-void print_ast(ASTNode *node, int indent) {
+void print_ast(ASTNode *node, int level) {
 
     while (node) {
 
-        for (int i = 0; i < indent; i++) {
+        for (int i = 0; i < level; i++)
             printf("  ");
-        }
 
         switch (node->type) {
 
-            case AST_VAR_DECL:
-                printf("VariableDeclaration(%s)\n",
-                       node->var_name);
-                print_ast(node->expr, indent + 1);
+            case AST_INT:
+
+                printf("IntegerLiteral(%d)\n",
+                       node->int_val);
+
                 break;
 
             case AST_VAR:
+
                 printf("Variable(%s)\n",
                        node->var_name);
-                break;
 
-            case AST_RETURN_STMT:
-                printf("ReturnStatement\n");
-                print_ast(node->return_value,
-                          indent + 1);
                 break;
 
             case AST_BINARY_EXPR:
+
                 printf("BinaryExpr (%c)\n",
                        node->op);
+
                 print_ast(node->left,
-                          indent + 1);
+                          level + 1);
+
                 print_ast(node->right,
-                          indent + 1);
+                          level + 1);
+
                 break;
 
-            case AST_INT:
-                printf("IntegerLiteral(%d)\n",
-                       node->int_val);
+            case AST_VAR_DECL:
+
+                printf("VariableDeclaration(%s)\n",
+                       node->var_name);
+
+                print_ast(node->expr,
+                          level + 1);
+
+                break;
+
+            case AST_ASSIGN:
+
+                printf("Assignment(%s)\n",
+                       node->var_name);
+
+                print_ast(node->expr,
+                          level + 1);
+
+                break;
+
+            case AST_RETURN_STMT:
+
+                printf("ReturnStatement\n");
+
+                print_ast(node->return_value,
+                          level + 1);
+
                 break;
 
             case AST_IF_STMT:
 
                 printf("IfStatement\n");
 
-                for (int i = 0; i < indent + 1; i++) {
+                for (int i = 0; i < level + 1; i++)
                     printf("  ");
-                }
 
                 printf("Condition\n");
-                print_ast(node->cond,
-                          indent + 2);
 
-                for (int i = 0; i < indent + 1; i++) {
+                print_ast(node->cond,
+                          level + 2);
+
+                for (int i = 0; i < level + 1; i++)
                     printf("  ");
-                }
 
                 printf("ThenBlock\n");
+
                 print_ast(node->then_block,
-                          indent + 2);
+                          level + 2);
 
                 if (node->else_block) {
 
-                    for (int i = 0; i < indent + 1; i++) {
+                    for (int i = 0; i < level + 1; i++)
                         printf("  ");
-                    }
 
                     printf("ElseBlock\n");
+
                     print_ast(node->else_block,
-                              indent + 2);
+                              level + 2);
                 }
 
                 break;
@@ -660,21 +883,21 @@ void print_ast(ASTNode *node, int indent) {
 
                 printf("WhileStatement\n");
 
-                for (int i = 0; i < indent + 1; i++) {
+                for (int i = 0; i < level + 1; i++)
                     printf("  ");
-                }
 
                 printf("Condition\n");
-                print_ast(node->cond,
-                          indent + 2);
 
-                for (int i = 0; i < indent + 1; i++) {
+                print_ast(node->cond,
+                          level + 2);
+
+                for (int i = 0; i < level + 1; i++)
                     printf("  ");
-                }
 
                 printf("Body\n");
+
                 print_ast(node->body,
-                          indent + 2);
+                          level + 2);
 
                 break;
         }
@@ -683,11 +906,9 @@ void print_ast(ASTNode *node, int indent) {
     }
 }
 
-// Label counter
-int label_sequence = 0;
-
-// Generate x86_64 assembly code
-void generate_code(ASTNode *node, FILE *output_file) {
+// Generate assembly
+void generate_code(ASTNode *node,
+                   FILE *output_file) {
 
     while (node) {
 
@@ -706,6 +927,14 @@ void generate_code(ASTNode *node, FILE *output_file) {
                 int offset =
                     get_symbol_offset(node->var_name);
 
+                if (offset == -1) {
+
+                    printf("Error: Undefined variable '%s'!\n",
+                           node->var_name);
+
+                    exit(1);
+                }
+
                 fprintf(output_file,
                         "    mov rax, [rbp - %d]\n",
                         offset);
@@ -715,22 +944,18 @@ void generate_code(ASTNode *node, FILE *output_file) {
 
             case AST_BINARY_EXPR:
 
-                // Evaluate right side and save it on the stack
                 generate_code(node->right,
                               output_file);
 
                 fprintf(output_file,
                         "    push rax\n");
 
-                // Evaluate left side
                 generate_code(node->left,
                               output_file);
 
-                // Get right side value back
                 fprintf(output_file,
                         "    pop rbx\n");
 
-                // Perform the operation
                 if (node->op == '+') {
 
                     fprintf(output_file,
@@ -746,15 +971,12 @@ void generate_code(ASTNode *node, FILE *output_file) {
 
             case AST_VAR_DECL: {
 
-                // Generate value of variable
-                generate_code(node->expr,
-                              output_file);
-
-                // Add variable to symbol table
                 int offset =
                     add_symbol(node->var_name);
 
-                // Store value in stack
+                generate_code(node->expr,
+                              output_file);
+
                 fprintf(output_file,
                         "    mov [rbp - %d], rax\n",
                         offset);
@@ -762,46 +984,73 @@ void generate_code(ASTNode *node, FILE *output_file) {
                 break;
             }
 
+            case AST_ASSIGN: {
+
+                int offset =
+                    get_symbol_offset(node->var_name);
+
+                if (offset == -1) {
+
+                    printf("Error: Undefined variable '%s'!\n",
+                           node->var_name);
+
+                    exit(1);
+                }
+
+                generate_code(node->expr,
+                              output_file);
+
+                fprintf(output_file,
+                        "    mov [rbp - %d], rax\n",
+                        offset);
+
+                break;
+            }
+
+            case AST_RETURN_STMT:
+
+                generate_code(node->return_value,
+                              output_file);
+
+                fprintf(output_file,
+                        "    mov rsp, rbp\n");
+
+                fprintf(output_file,
+                        "    pop rbp\n");
+
+                fprintf(output_file,
+                        "    ret\n");
+
+                break;
+
             case AST_IF_STMT: {
 
                 int label_id =
                     label_sequence++;
 
-                // Generate condition
                 generate_code(node->cond,
                               output_file);
 
                 fprintf(output_file,
                         "    cmp rax, 0\n");
 
-                if (node->else_block) {
+                fprintf(output_file,
+                        "    je .Lelse_%d\n",
+                        label_id);
 
-                    fprintf(output_file,
-                            "    je .Lelse_%d\n",
-                            label_id);
-
-                } else {
-
-                    fprintf(output_file,
-                            "    je .Lend_%d\n",
-                            label_id);
-                }
-
-                // Generate if block
                 generate_code(node->then_block,
                               output_file);
 
+                fprintf(output_file,
+                        "    jmp .Lend_%d\n",
+                        label_id);
+
+                fprintf(output_file,
+                        ".Lelse_%d:\n",
+                        label_id);
+
                 if (node->else_block) {
 
-                    fprintf(output_file,
-                            "    jmp .Lend_%d\n",
-                            label_id);
-
-                    fprintf(output_file,
-                            ".Lelse_%d:\n",
-                            label_id);
-
-                    // Generate else block
                     generate_code(node->else_block,
                                   output_file);
                 }
@@ -818,130 +1067,65 @@ void generate_code(ASTNode *node, FILE *output_file) {
                 int label_id =
                     label_sequence++;
 
-                // Loop start label
                 fprintf(output_file,
                         ".Lloop_start_%d:\n",
                         label_id);
 
-                // Generate condition
                 generate_code(node->cond,
                               output_file);
 
                 fprintf(output_file,
                         "    cmp rax, 0\n");
 
-                // Exit loop if condition is false
                 fprintf(output_file,
                         "    je .Lloop_end_%d\n",
                         label_id);
 
-                // Generate loop body
                 generate_code(node->body,
                               output_file);
 
-                // Jump back to loop start
                 fprintf(output_file,
                         "    jmp .Lloop_start_%d\n",
                         label_id);
 
-                // Loop end label
                 fprintf(output_file,
                         ".Lloop_end_%d:\n",
                         label_id);
 
                 break;
             }
-
-            case AST_RETURN_STMT:
-
-                // Generate return value
-                generate_code(node->return_value,
-                              output_file);
-
-                // Function epilogue
-                fprintf(output_file,
-                        "    mov rsp, rbp\n");
-
-                fprintf(output_file,
-                        "    pop rbp\n");
-
-                fprintf(output_file,
-                        "    ret\n");
-
-                break;
         }
 
         node = node->next;
     }
 }
 
-// Free AST memory
+// Free AST
 void free_ast(ASTNode *node) {
 
-    if (!node) {
-        return;
+    while (node) {
+
+        ASTNode *next =
+            node->next;
+
+        free_ast(node->left);
+        free_ast(node->right);
+        free_ast(node->expr);
+        free_ast(node->return_value);
+        free_ast(node->cond);
+        free_ast(node->then_block);
+        free_ast(node->else_block);
+        free_ast(node->body);
+
+        free(node);
+
+        node = next;
     }
-
-    free_ast(node->left);
-    free_ast(node->right);
-    free_ast(node->expr);
-    free_ast(node->return_value);
-    free_ast(node->cond);
-    free_ast(node->then_block);
-    free_ast(node->else_block);
-    free_ast(node->body);
-    free_ast(node->next);
-
-    free(node);
 }
 
-// Read entire file
-char* read_file(const char *file_path) {
-
-    FILE *file =
-        fopen(file_path, "rb");
-
-    if (!file) {
-
-        printf("Error: Could not open file %s\n",
-               file_path);
-
-        return NULL;
-    }
-
-    // Get file size
-    fseek(file, 0, SEEK_END);
-
-    long size = ftell(file);
-
-    fseek(file, 0, SEEK_SET);
-
-    // Allocate memory
-    char *buffer =
-        (char*)malloc(size + 1);
-
-    if (!buffer) {
-
-        fclose(file);
-
-        printf("Error: Memory allocation failed!\n");
-
-        return NULL;
-    }
-
-    // Read file
-    fread(buffer, 1, size, file);
-
-    buffer[size] = '\0';
-
-    fclose(file);
-
-    return buffer;
-}
-
+// Main
 int main(int argc, char *argv[]) {
 
-    // Check command-line arguments
     if (argc < 2) {
 
         printf("Usage: %s <source_file.c> [-o output_file.s]\n",
@@ -950,14 +1134,12 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Set input and output file names
     const char *input_file_path =
         argv[1];
 
     const char *output_file_path =
         "out.s";
 
-    // Check for custom output file
     if (argc >= 4 &&
         strcmp(argv[2], "-o") == 0) {
 
@@ -965,7 +1147,10 @@ int main(int argc, char *argv[]) {
             argv[3];
     }
 
-    // Read source file
+    printf("Compiling %s -> %s...\n",
+           input_file_path,
+           output_file_path);
+
     char *source_code =
         read_file(input_file_path);
 
@@ -973,49 +1158,35 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("Compiling %s -> %s...\n",
-           input_file_path,
-           output_file_path);
-
-    // Start lexer
     const char *ptr =
         source_code;
 
-    advance_token(&ptr);
+    symbol_count = 0;
+    label_sequence = 0;
 
-    // Parse source code
-    ASTNode *ast_root =
+    current_token =
+        get_next_token(&ptr);
+
+    ASTNode *root =
         parse_program(&ptr);
-
-    if (!ast_root) {
-
-        printf("Error: Could not parse source file!\n");
-
-        free(source_code);
-
-        return 1;
-    }
 
     printf("Generating AST\n");
 
-    print_ast(ast_root, 0);
+    print_ast(root, 0);
 
-    // Open output assembly file
     FILE *output_file =
         fopen(output_file_path, "w");
 
     if (!output_file) {
 
-        printf("Error: Could not open output file %s\n",
-               output_file_path);
+        printf("Error: Could not create output file!\n");
 
-        free_ast(ast_root);
+        free_ast(root);
         free(source_code);
 
         return 1;
     }
 
-    // Write assembly header
     fprintf(output_file,
             ".intel_syntax noprefix\n");
 
@@ -1025,7 +1196,6 @@ int main(int argc, char *argv[]) {
     fprintf(output_file,
             "main:\n");
 
-    // Function prologue
     fprintf(output_file,
             "    push rbp\n");
 
@@ -1035,8 +1205,7 @@ int main(int argc, char *argv[]) {
     fprintf(output_file,
             "    sub rsp, 800\n");
 
-    // Generate assembly code
-    generate_code(ast_root,
+    generate_code(root,
                   output_file);
 
     fclose(output_file);
@@ -1046,8 +1215,7 @@ int main(int argc, char *argv[]) {
 
     printf("Compilation finished successfully!\n");
 
-    // Free memory
-    free_ast(ast_root);
+    free_ast(root);
     free(source_code);
 
     return 0;

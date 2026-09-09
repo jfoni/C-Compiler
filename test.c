@@ -1,7 +1,7 @@
-int x = 1;
+int x = 5;
 
 while (x) {
-    return 77;
+    x = x - 1;
 }
 
-return 0;
+return x;
