@@ -409,7 +409,7 @@ void print_ast(ASTNode *node, int indent) {
 }
 
 // Generate x86_64 assembly code
-void generate_code(ASTNode *node) {
+void generate_code(ASTNode *node, FILE *output_file) {
 
     if (!node) {
         return;
@@ -418,27 +418,27 @@ void generate_code(ASTNode *node) {
     switch (node->type) {
 
         case AST_INT:
-            printf("    mov rax, %d\n", node->int_val);
+            fprintf(output_file, "    mov rax, %d\n", node->int_val);
             break;
 
         case AST_BINARY_EXPR:
 
             // Evaluate right side and save it on the stack
-            generate_code(node->right);
+            generate_code(node->right, output_file);
 
-            printf("    push rax\n");
+            fprintf(output_file, "    push rax\n");
 
             // Evaluate left side
-            generate_code(node->left);
+            generate_code(node->left, output_file);
 
             // Get right side value back
-            printf("    pop rbx\n");
+            fprintf(output_file, "    pop rbx\n");
 
             // Perform the operation
             if (node->op == '+') {
-                printf("    add rax, rbx\n");
+                fprintf(output_file, "    add rax, rbx\n");
             } else if (node->op == '-') {
-                printf("    sub rax, rbx\n");
+                fprintf(output_file, "    sub rax, rbx\n");
             }
 
             break;
@@ -446,10 +446,10 @@ void generate_code(ASTNode *node) {
         case AST_RETURN_STMT:
 
             // Generate code for return value
-            generate_code(node->return_value);
+            generate_code(node->return_value, output_file);
 
             // Return from function
-            printf("    ret\n");
+            fprintf(output_file, "    ret\n");
 
             break;
     }
@@ -492,15 +492,28 @@ int main() {
     printf("Generating AST\n");
     print_ast(ast_root, 0);
 
-    printf("\n");
+    // Open output assembly file
+    FILE *output_file = fopen("out.s", "w");
 
-    // Generate x86_64 assembly
-    printf("Generated x86_64 Assembly Code\n");
-    printf(".intel_syntax noprefix\n");
-    printf(".globl main\n");
-    printf("main:\n");
+    if (!output_file) {
+        printf("Error: Could not create output file!\n");
+        free_ast(ast_root);
+        free(source_code);
+        return 1;
+    }
 
-    generate_code(ast_root);
+    // Write assembly header
+    fprintf(output_file, ".intel_syntax noprefix\n");
+    fprintf(output_file, ".globl main\n");
+    fprintf(output_file, "main:\n");
+
+    // Generate assembly code
+    generate_code(ast_root, output_file);
+
+    // Close output file
+    fclose(output_file);
+
+    printf("Assembly code successfully written to out.s\n");
 
     // Free AST memory
     free_ast(ast_root);
