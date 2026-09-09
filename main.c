@@ -205,7 +205,8 @@ typedef enum {
     AST_VAR,
     AST_BINARY_EXPR,
     AST_VAR_DECL,
-    AST_RETURN_STMT
+    AST_RETURN_STMT,
+    AST_IF_STMT
 } ASTNodeType;
 
 // AST node structure
@@ -224,6 +225,10 @@ typedef struct ASTNode {
     struct ASTNode *expr;
 
     struct ASTNode *return_value;
+
+    struct ASTNode *cond;
+    struct ASTNode *then_block;
+    struct ASTNode *else_block;
 
     struct ASTNode *next;
 } ASTNode;
@@ -396,6 +401,98 @@ ASTNode* parse_return_statement(const char **src) {
     return node;
 }
 
+// Parse block
+ASTNode* parse_block(const char **src) {
+
+    if (current_token.type != TOKEN_LBRACE) {
+        printf("Error: Expected '{'!\n");
+        exit(1);
+    }
+
+    advance_token(src);
+
+    ASTNode *head = NULL;
+    ASTNode *tail = NULL;
+
+    while (current_token.type != TOKEN_RBRACE &&
+           current_token.type != TOKEN_EOF) {
+
+        ASTNode *statement = NULL;
+
+        if (current_token.type == TOKEN_KW_INT) {
+            statement = parse_variable_declaration(src);
+        } else if (current_token.type == TOKEN_KW_RETURN) {
+            statement = parse_return_statement(src);
+        } else {
+            printf("Error: Unexpected token inside block!\n");
+            exit(1);
+        }
+
+        if (!head) {
+            head = statement;
+            tail = statement;
+        } else {
+            tail->next = statement;
+            tail = statement;
+        }
+    }
+
+    if (current_token.type != TOKEN_RBRACE) {
+        printf("Error: Expected '}'!\n");
+        exit(1);
+    }
+
+    advance_token(src);
+
+    return head;
+}
+
+// Parse if statement
+ASTNode* parse_if_statement(const char **src) {
+
+    if (current_token.type != TOKEN_KW_IF) {
+        return NULL;
+    }
+
+    advance_token(src);
+
+    if (current_token.type != TOKEN_LPAREN) {
+        printf("Error: Expected '(' after if!\n");
+        exit(1);
+    }
+
+    advance_token(src);
+
+    ASTNode *node = create_node(AST_IF_STMT);
+
+    node->cond = parse_expression(src);
+
+    if (!node->cond) {
+        printf("Error: Expected condition inside if!\n");
+        free(node);
+        exit(1);
+    }
+
+    if (current_token.type != TOKEN_RPAREN) {
+        printf("Error: Expected ')' after condition!\n");
+        free(node);
+        exit(1);
+    }
+
+    advance_token(src);
+
+    node->then_block = parse_block(src);
+
+    if (current_token.type == TOKEN_KW_ELSE) {
+
+        advance_token(src);
+
+        node->else_block = parse_block(src);
+    }
+
+    return node;
+}
+
 // Parse all statements
 ASTNode* parse_program(const char **src) {
 
@@ -410,6 +507,8 @@ ASTNode* parse_program(const char **src) {
             statement = parse_variable_declaration(src);
         } else if (current_token.type == TOKEN_KW_RETURN) {
             statement = parse_return_statement(src);
+        } else if (current_token.type == TOKEN_KW_IF) {
+            statement = parse_if_statement(src);
         } else {
             printf("Error: Unexpected token!\n");
             exit(1);
@@ -461,11 +560,43 @@ void print_ast(ASTNode *node, int indent) {
             case AST_INT:
                 printf("IntegerLiteral(%d)\n", node->int_val);
                 break;
+
+            case AST_IF_STMT:
+                printf("IfStatement\n");
+
+                for (int i = 0; i < indent + 1; i++) {
+                    printf("  ");
+                }
+
+                printf("Condition\n");
+                print_ast(node->cond, indent + 2);
+
+                for (int i = 0; i < indent + 1; i++) {
+                    printf("  ");
+                }
+
+                printf("ThenBlock\n");
+                print_ast(node->then_block, indent + 2);
+
+                if (node->else_block) {
+
+                    for (int i = 0; i < indent + 1; i++) {
+                        printf("  ");
+                    }
+
+                    printf("ElseBlock\n");
+                    print_ast(node->else_block, indent + 2);
+                }
+
+                break;
         }
 
         node = node->next;
     }
 }
+
+// Label counter
+int label_sequence = 0;
 
 // Generate x86_64 assembly code
 void generate_code(ASTNode *node, FILE *output_file) {
@@ -475,7 +606,9 @@ void generate_code(ASTNode *node, FILE *output_file) {
         switch (node->type) {
 
             case AST_INT:
-                fprintf(output_file, "    mov rax, %d\n", node->int_val);
+                fprintf(output_file,
+                        "    mov rax, %d\n",
+                        node->int_val);
                 break;
 
             case AST_VAR: {
@@ -525,15 +658,63 @@ void generate_code(ASTNode *node, FILE *output_file) {
                 break;
             }
 
+            case AST_IF_STMT: {
+                int label_id = label_sequence++;
+
+                // Generate condition
+                generate_code(node->cond, output_file);
+
+                fprintf(output_file,
+                        "    cmp rax, 0\n");
+
+                if (node->else_block) {
+                    fprintf(output_file,
+                            "    je .Lelse_%d\n",
+                            label_id);
+                } else {
+                    fprintf(output_file,
+                            "    je .Lend_%d\n",
+                            label_id);
+                }
+
+                // Generate if block
+                generate_code(node->then_block, output_file);
+
+                if (node->else_block) {
+
+                    fprintf(output_file,
+                            "    jmp .Lend_%d\n",
+                            label_id);
+
+                    fprintf(output_file,
+                            ".Lelse_%d:\n",
+                            label_id);
+
+                    // Generate else block
+                    generate_code(node->else_block, output_file);
+                }
+
+                fprintf(output_file,
+                        ".Lend_%d:\n",
+                        label_id);
+
+                break;
+            }
+
             case AST_RETURN_STMT:
 
                 // Generate return value
                 generate_code(node->return_value, output_file);
 
                 // Function epilogue
-                fprintf(output_file, "    mov rsp, rbp\n");
-                fprintf(output_file, "    pop rbp\n");
-                fprintf(output_file, "    ret\n");
+                fprintf(output_file,
+                        "    mov rsp, rbp\n");
+
+                fprintf(output_file,
+                        "    pop rbp\n");
+
+                fprintf(output_file,
+                        "    ret\n");
 
                 break;
         }
@@ -553,6 +734,9 @@ void free_ast(ASTNode *node) {
     free_ast(node->right);
     free_ast(node->expr);
     free_ast(node->return_value);
+    free_ast(node->cond);
+    free_ast(node->then_block);
+    free_ast(node->else_block);
     free_ast(node->next);
 
     free(node);
@@ -564,7 +748,8 @@ char* read_file(const char *file_path) {
     FILE *file = fopen(file_path, "rb");
 
     if (!file) {
-        printf("Error: Could not open file %s\n", file_path);
+        printf("Error: Could not open file %s\n",
+               file_path);
         return NULL;
     }
 
@@ -598,7 +783,8 @@ int main(int argc, char *argv[]) {
 
     // Check command-line arguments
     if (argc < 2) {
-        printf("Usage: %s <source_file.c> [-o output_file.s]\n", argv[0]);
+        printf("Usage: %s <source_file.c> [-o output_file.s]\n",
+               argv[0]);
         return 1;
     }
 
@@ -653,14 +839,24 @@ int main(int argc, char *argv[]) {
     }
 
     // Write assembly header
-    fprintf(output_file, ".intel_syntax noprefix\n");
-    fprintf(output_file, ".globl main\n");
-    fprintf(output_file, "main:\n");
+    fprintf(output_file,
+            ".intel_syntax noprefix\n");
+
+    fprintf(output_file,
+            ".globl main\n");
+
+    fprintf(output_file,
+            "main:\n");
 
     // Function prologue
-    fprintf(output_file, "    push rbp\n");
-    fprintf(output_file, "    mov rbp, rsp\n");
-    fprintf(output_file, "    sub rsp, 800\n");
+    fprintf(output_file,
+            "    push rbp\n");
+
+    fprintf(output_file,
+            "    mov rbp, rsp\n");
+
+    fprintf(output_file,
+            "    sub rsp, 800\n");
 
     // Generate assembly code
     generate_code(ast_root, output_file);
