@@ -20,16 +20,15 @@ I made this project to understand how a compiler actually works — from taking 
 
 ## Supported Operators
 
-### Arithmetic
+## Arithmetic
 
-```text
 +
 -
 *
 /
 %
 
-### Comparison
+## Comparison
 
 >
 <
